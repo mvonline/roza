@@ -435,6 +435,8 @@ select { padding: .55rem .65rem; }
 }
 .account-panel form { display: grid; gap: .5rem; }
 .account-panel > span { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sign-in-code { grid-template-columns: 1fr auto; align-items: center; }
+.sign-in-message { color: var(--text-muted); font-size: .75rem; line-height: 1.45; }
 .cache-reset { justify-self: start; padding: .4rem .65rem; font-size: .73rem; font-weight: 600; }
 
 /* ---------------------------------------------------------------------- */

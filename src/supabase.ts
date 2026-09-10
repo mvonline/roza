@@ -13,6 +13,13 @@ export async function sendSignInLink(email: string) {
   if (error) throw error;
 }
 
+export async function verifySignInCode(email: string, token: string) {
+  if (!supabase) throw new Error("Cloud sync is not configured yet.");
+  const { data, error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
+  if (error) throw error;
+  return data.user;
+}
+
 export async function currentUser() {
   if (!supabase) return null;
   const { data } = await supabase.auth.getUser();

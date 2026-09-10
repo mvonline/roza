@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { db, normalize, queueSync, rebuildMeetingSearch } from "./db";
 import { createRecognizer, hasSpeechRecognition, requestMicrophoneAccess, speechErrorMessage } from "./speech";
-import { currentUser, sendSignInLink, supabase, sync, translateWithCloud, type CloudProvider } from "./supabase";
+import { currentUser, sendSignInLink, supabase, sync, translateWithCloud, verifySignInCode, type CloudProvider } from "./supabase";
 import type { Language, Meeting, TranscriptSegment } from "./types";
 
 type Theme = "system" | "light" | "dark";
@@ -41,6 +41,9 @@ export default function App() {
   const [message, setMessage] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
+  const [signInCode, setSignInCode] = useState("");
+  const [signInState, setSignInState] = useState<"idle" | "sending" | "sent" | "verifying">("idle");
+  const [signInMessage, setSignInMessage] = useState("");
   const [syncState, setSyncState] = useState(
     supabase ? "Sign in to sync" : "Saved on this device",
   );
@@ -494,11 +497,29 @@ export default function App() {
   }
   async function signIn(event: React.FormEvent) {
     event.preventDefault();
+    setSignInState("sending");
+    setSignInMessage("");
     try {
-      await sendSignInLink(email);
-      setMessage("Check your email for the sign-in link.");
+      await sendSignInLink(email.trim());
+      setSignInState("sent");
+      setSignInMessage(`Sign-in email sent to ${email.trim()}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not sign in.");
+      setSignInState("idle");
+      setSignInMessage(error instanceof Error ? error.message : "Could not send the sign-in email.");
+    }
+  }
+  async function verifyCode(event: React.FormEvent) {
+    event.preventDefault();
+    setSignInState("verifying");
+    setSignInMessage("");
+    try {
+      const account = await verifySignInCode(email.trim(), signInCode.trim());
+      setUser(account);
+      setSignInMessage("Signed in. Syncing your sessions…");
+      if (account) void runSync(account);
+    } catch (error) {
+      setSignInState("sent");
+      setSignInMessage(error instanceof Error ? error.message : "That code could not be verified.");
     }
   }
 
@@ -633,16 +654,24 @@ export default function App() {
                 <button className="quiet cache-reset" onClick={() => void resetAppCache()}>Reset app cache</button>
               </>
             ) : (
-              <form onSubmit={signIn}>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email for sync"
-                  required
-                />
-                <button>Sign in</button>
-              </form>
+              <>
+                <form onSubmit={signIn}>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Email for sync"
+                    autoComplete="email"
+                    required
+                  />
+                  <button disabled={signInState === "sending" || signInState === "verifying"}>{signInState === "sending" ? "Sending…" : "Send sign-in email"}</button>
+                </form>
+                {signInState === "sent" && <form className="sign-in-code" onSubmit={verifyCode}>
+                  <input value={signInCode} onChange={(e) => setSignInCode(e.target.value)} placeholder="Email code (if provided)" inputMode="numeric" autoComplete="one-time-code" />
+                  <button className="quiet" disabled={!signInCode}>Verify code</button>
+                </form>}
+                {signInMessage && <p className="sign-in-message">{signInMessage} {signInState === "sent" && "Open the email on this device. On iPad, Safari is more reliable than the installed app for magic links."}</p>}
+              </>
             )
           ) : (
             <span>Cloud sync awaits Supabase setup.</span>
