@@ -65,6 +65,10 @@ export default function App() {
   const activeRef = useRef<string | null>(null);
   const stopped = useRef(false);
   const recognitionStarting = useRef(false);
+  const lastSpeechActivity = useRef(0);
+  const recognitionRestartTimer = useRef<number | null>(null);
+  const beginRecognitionRef = useRef<(language: Language) => void>(() => undefined);
+  const diagnosticsEnabled = useRef(showDiagnostics);
   const translationWorker = useRef<Worker | null>(null);
   const tabId = useRef(crypto.randomUUID());
   const syncInFlight = useRef<Promise<void> | null>(null);
@@ -75,11 +79,13 @@ export default function App() {
   const pauseOpenRecordingsRef = useRef<(reason: string) => Promise<void>>(async () => undefined);
 
   const traceSpeech = useCallback((event: string) => {
+    if (!diagnosticsEnabled.current) return;
     const entry = `${new Date().toLocaleTimeString()} — ${event}`;
     console.info("[Roza speech]", entry);
     setSpeechLog((items) => [entry, ...items].slice(0, 16));
   }, []);
   const traceTranslation = useCallback((event: string) => {
+    if (!diagnosticsEnabled.current) return;
     const entry = `${new Date().toLocaleTimeString()} — ${event}`;
     console.info("[Roza translation]", entry);
     setTranslationLog((items) => [entry, ...items].slice(0, 16));
@@ -184,8 +190,12 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("roza-theme", theme);
   }, [theme]);
+  useEffect(() => {
+    diagnosticsEnabled.current = showDiagnostics;
+  }, [showDiagnostics]);
   useEffect(() => () => {
     translationWorker.current?.terminate();
+    if (recognitionRestartTimer.current) window.clearTimeout(recognitionRestartTimer.current);
     const lock = localStorage.getItem(translationLockKey);
     if (lock && JSON.parse(lock).tabId === tabId.current) localStorage.removeItem(translationLockKey);
   }, []);
@@ -402,23 +412,31 @@ export default function App() {
   function beginRecognition(language: Language) {
     if (stopped.current || recognitionStarting.current) return;
     recognitionStarting.current = true;
+    lastSpeechActivity.current = Date.now();
     traceSpeech("Creating recognizer");
     const next = createRecognizer(
       language,
       (text) => {
-        if (text) traceSpeech(`Interim text received (${text.length} characters)`);
+        if (text) {
+          lastSpeechActivity.current = Date.now();
+          traceSpeech(`Interim text received (${text.length} characters)`);
+        }
         setInterim(text);
       },
-      (text) => void saveFinal(text),
+      (text) => {
+        lastSpeechActivity.current = Date.now();
+        void saveFinal(text);
+      },
       () => {
         recognitionStarting.current = false;
+        if (recognizer.current === next) recognizer.current = null;
         traceSpeech("Recognizer ended");
-        if (!stopped.current) window.setTimeout(() => beginRecognition(language), 400);
+        if (!stopped.current) scheduleRecognitionRestart(language, 400);
       },
       (error) => {
         traceSpeech(`Recognizer error: ${error}`);
         setMessage(speechErrorMessage(error));
-        if (["not-allowed", "service-not-allowed", "audio-capture", "network"].includes(error)) {
+        if (["not-allowed", "service-not-allowed", "audio-capture"].includes(error)) {
           stopped.current = true;
           void saveMeeting({ status: "paused" });
         }
@@ -439,6 +457,37 @@ export default function App() {
       setMessage("Could not start transcription. Try Start once more.");
     }
   }
+  function scheduleRecognitionRestart(language: Language, delay: number) {
+    if (stopped.current || recognitionRestartTimer.current) return;
+    traceSpeech(`Recognizer recovery scheduled in ${Math.round(delay / 1000)} seconds`);
+    recognitionRestartTimer.current = window.setTimeout(() => {
+      recognitionRestartTimer.current = null;
+      beginRecognitionRef.current(language);
+    }, delay);
+  }
+  useEffect(() => {
+    beginRecognitionRef.current = beginRecognition;
+  });
+  useEffect(() => {
+    const watchdog = window.setInterval(() => {
+      const meetingId = activeRef.current;
+      if (stopped.current || !meetingId || Date.now() - lastSpeechActivity.current < 45_000) return;
+      void db.meetings.get(meetingId).then((meeting) => {
+        if (!meeting || meeting.status !== "recording" || stopped.current) return;
+        lastSpeechActivity.current = Date.now();
+        const stuckRecognizer = recognizer.current;
+        traceSpeech("No speech activity for 45 seconds; recovering recognizer");
+        stuckRecognizer?.stop();
+        window.setTimeout(() => {
+          if (stopped.current || recognizer.current !== stuckRecognizer) return;
+          recognitionStarting.current = false;
+          recognizer.current = null;
+          beginRecognitionRef.current(meeting.language);
+        }, 1_200);
+      });
+    }, 15_000);
+    return () => window.clearInterval(watchdog);
+  }, []);
   async function start() {
     traceSpeech("Start pressed");
     if (!active) {
