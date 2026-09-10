@@ -69,6 +69,8 @@ Deno.serve(async (request) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: token } } });
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return response({ error: "Sign in is required." }, 401);
+    const allowedEmails = (Deno.env.get("CLOUD_TRANSLATION_ALLOWED_EMAILS") || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean);
+    if (!user.email || !allowedEmails.includes(user.email.toLowerCase())) return response({ error: "Cloud translation is not enabled for this account." }, 403);
     const body = await request.json() as RequestBody;
     if (!allowedModels[body.provider]?.includes(body.model) || !Array.isArray(body.texts) || body.texts.length < 1 || body.texts.length > 20 || body.texts.some((text) => typeof text !== "string") || !["Swedish", "English"].includes(body.sourceLanguage)) return response({ error: "Invalid translation request." }, 400);
     const texts = body.texts.map((text) => text.trim());
