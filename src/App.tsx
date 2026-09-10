@@ -334,7 +334,7 @@ export default function App() {
     await loadSegments(meetingId);
     await loadMeetings();
     if (saved) {
-      if (cloudAutoTranslate && user) queueCloudTranslation(saved, source);
+      if (cloudAutoTranslate && user) requestAnimationFrame(() => queueCloudTranslation(saved!, source));
       else requestTranslation(saved, source);
     }
     if (user) void runSync(user);
