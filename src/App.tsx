@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { db, normalize, queueSync, rebuildMeetingSearch } from "./db";
-import { createRecognizer, hasSpeechRecognition } from "./speech";
+import { createRecognizer, hasSpeechRecognition, requestMicrophoneAccess, speechErrorMessage } from "./speech";
 import { currentUser, sendSignInLink, supabase, sync, translateWithCloud, type CloudProvider } from "./supabase";
 import type { Language, Meeting, TranscriptSegment } from "./types";
 
@@ -324,8 +324,15 @@ export default function App() {
     if (!active) return;
     if (!hasSpeechRecognition())
       return setMessage(
-        "Try Safari on iPhone/iPad or Chrome on Android for live transcription.",
+        /CriOS/.test(navigator.userAgent)
+          ? "Chrome on iPad does not provide reliable live transcription. Open Roza in Safari and allow the microphone."
+          : "Live transcription is unavailable in this browser. Try Safari on iPhone/iPad or Chrome on Android.",
       );
+    try {
+      await requestMicrophoneAccess();
+    } catch {
+      return setMessage("Allow Microphone for this browser in iPad Settings, then try again.");
+    }
     stopped.current = false;
     await saveMeeting({
       status: "recording",
@@ -343,7 +350,7 @@ export default function App() {
             });
           }, 400);
       },
-      (error) => setMessage(`Transcription stopped: ${error}`),
+      (error) => setMessage(speechErrorMessage(error)),
     );
     try {
       recognizer.current?.start();

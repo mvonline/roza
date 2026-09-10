@@ -20,6 +20,19 @@ export function hasSpeechRecognition() {
   return Boolean(browser.SpeechRecognition || browser.webkitSpeechRecognition);
 }
 
+export async function requestMicrophoneAccess() {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error("microphone-unavailable");
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  stream.getTracks().forEach((track) => track.stop());
+}
+
+export function speechErrorMessage(error: string) {
+  if (error === "not-allowed" || error === "service-not-allowed") return "Allow Microphone for this browser in iPad Settings, then try again. If it still fails in Chrome, open Roza in Safari.";
+  if (error === "network") return "Live transcription needs an internet connection in this browser.";
+  if (error === "audio-capture") return "No microphone is available. Disconnect Bluetooth audio and try again.";
+  return `Transcription stopped: ${error}`;
+}
+
 export function createRecognizer(language: Language, onInterim: (text: string) => void, onFinal: (text: string) => void, onEnd: () => void, onError: (message: string) => void) {
   const browser = window as typeof window & { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor };
   const Constructor = browser.SpeechRecognition || browser.webkitSpeechRecognition;
