@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Refreshing Roza</title>
+  <style>body{font-family:system-ui,sans-serif;max-width:34rem;margin:4rem auto;padding:0 1.5rem;line-height:1.5;background:#f7f5ff;color:#201b2d}main{padding:1.5rem;border:1px solid #dcd5ec;border-radius:1rem;background:white}a{color:#6137df}</style>
+  <main><h1>Refreshing Roza</h1><p id="status">Removing the old app cache…</p><p><a id="open" href="/">Open Roza</a></p></main>
+  <script>
+    Promise.all([
+      navigator.serviceWorker ? navigator.serviceWorker.getRegistrations().then((registrations) => Promise.all(registrations.map((registration) => registration.unregister()))) : Promise.resolve(),
+      caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+    ]).then(() => {
+      document.querySelector("#status").textContent = "Done. Your saved sessions were not removed. Open Roza to load the current version.";
+    }).catch(() => {
+      document.querySelector("#status").textContent = "Please reload this page, then open Roza.";
+    });
+  </script>
+</html>
