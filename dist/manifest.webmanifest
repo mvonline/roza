@@ -1,0 +1,17 @@
+{
+  "name": "Roza",
+  "short_name": "Roza",
+  "description": "Swedish and English live transcription",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f5ff",
+  "theme_color": "#7b4dff",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
