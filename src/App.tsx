@@ -34,7 +34,11 @@ export default function App() {
     const found = (await db.meetings.bulkGet([...new Set(hits.map((hit) => hit.meetingId))])).filter((m): m is Meeting => Boolean(m && !m.deletedAt));
     setMeetings(found.sort((a, b) => b.updatedAt - a.updatedAt));
   }, [page, search]);
-  const loadSegments = useCallback(async (id: string | null) => setSegments(id ? await db.segments.where("meetingId").equals(id).filter((s) => !s.deletedAt).sortBy("sequence") : []), []);
+  const loadSegments = useCallback(async (id: string | null) => {
+    if (!id) return setSegments([]);
+    const rows = await db.segments.where("meetingId").equals(id).filter((segment) => !segment.deletedAt).toArray();
+    setSegments(rows.sort((a, b) => a.createdAt - b.createdAt || a.sequence - b.sequence));
+  }, []);
   const runSync = useCallback(async (account: User) => { try { setSyncState("Syncing"); await sync(account); setSyncState("Synced"); await loadMeetings(); await loadSegments(activeRef.current); } catch { setSyncState("Needs attention"); } }, [loadMeetings, loadSegments]);
 
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("roza-theme", theme); }, [theme]);
