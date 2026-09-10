@@ -38,7 +38,7 @@ button, select {
 .content { padding: 1.5rem; max-width: 900px; width: 100%; margin: 0 auto; }
 .brand-row, .topbar, .controls, .meeting-options { display: flex; align-items: center; gap: .75rem; justify-content: space-between; }
 .search, .meeting-options input, .account-panel input, .title-input { width: 100%; border: 1px solid #cfc7e1; border-radius: .6rem; background: transparent; color: inherit; padding: .65rem; }
-.meeting-list { display: grid; gap: .35rem; height: clamp(14rem, 45vh, 34rem); overflow-y: auto; overscroll-behavior: contain; padding-right: .2rem; scrollbar-width: none; }
+.meeting-list { display: grid; align-content: start; gap: .5rem; height: clamp(14rem, 45vh, 34rem); overflow-y: auto; overscroll-behavior: contain; padding: .1rem .35rem .2rem .1rem; scrollbar-width: none; }
 .meeting-list::-webkit-scrollbar { display: none; }
 .label-section { display: grid; gap: .4rem; }
 .label-list { display: flex; flex-wrap: wrap; gap: .35rem; }
@@ -46,10 +46,24 @@ button, select {
 .label-list .label-active { background: #7b4dff; border-color: #7b4dff; color: white; }
 .applied-labels { display: flex; flex-wrap: wrap; gap: .35rem; }
 .applied-labels span { border-radius: 999px; background: #e4dcff; color: #4b328f; padding: .3rem .55rem; font-size: .78rem; }
-.meeting-item { display: grid; text-align: left; background: color-mix(in srgb, Canvas 92%, #e4dcff); color: inherit; padding: .75rem; border: 1px solid transparent; border-radius: .75rem; }
-.meeting-item:hover { border-color: #b8a9ed; }
-.meeting-item.selected { background: #7b4dff; color: white; box-shadow: 0 5px 16px #7b4dff44; }
-.meeting-item span, .meeting-item small { font-size: .75rem; opacity: .8; }
+.meeting-item { position: relative; display: grid; gap: .35rem; min-height: 5.5rem; width: 100%; overflow: hidden; text-align: left; background: color-mix(in srgb, Canvas 96%, #e4dcff); color: inherit; padding: .85rem .9rem; border: 1px solid #e3ddef; border-radius: .9rem; box-shadow: 0 1px 2px #21183b08; transition: background .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease; }
+.meeting-item::before { content: ""; position: absolute; inset: .65rem auto .65rem 0; width: 3px; border-radius: 0 999px 999px 0; background: transparent; }
+.meeting-item strong { min-width: 0; overflow: hidden; color: #29213a; font-size: .94rem; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.meeting-item span { color: #746b85; font-size: .76rem; font-variant-numeric: tabular-nums; }
+.meeting-item small { width: fit-content; max-width: 100%; overflow: hidden; color: #604a98; font-size: .72rem; font-weight: 650; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.meeting-item:hover { border-color: #b8a9ed; background: #f1edff; box-shadow: 0 5px 14px #21183b12; transform: translateY(-1px); }
+.meeting-item:focus-visible { outline: 3px solid #a995ff; outline-offset: 2px; }
+.meeting-item.selected { background: #ede7ff; border-color: #a995ff; box-shadow: 0 6px 18px #7b4dff1c; }
+.meeting-item.selected::before { background: #7b4dff; }
+.meeting-item.selected strong { color: #3f277b; }
+
+:root[data-theme="dark"] .meeting-item { background: #211c2d; border-color: #342d44; box-shadow: none; }
+:root[data-theme="dark"] .meeting-item strong { color: #f4efff; }
+:root[data-theme="dark"] .meeting-item span { color: #b9b0c9; }
+:root[data-theme="dark"] .meeting-item small { color: #d1c4ff; }
+:root[data-theme="dark"] .meeting-item:hover { background: #292237; border-color: #715ca5; }
+:root[data-theme="dark"] .meeting-item.selected { background: #352757; border-color: #9d83ff; box-shadow: 0 6px 18px #0003; }
+:root[data-theme="dark"] .meeting-item.selected strong { color: #f7f4ff; }
 .account-panel { display: grid; gap: .5rem; margin-top: auto; font-size: .8rem; }
 .account-panel form { display: grid; gap: .5rem; }
 .topbar { justify-content: flex-end; margin-bottom: 2rem; }
