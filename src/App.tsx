@@ -499,13 +499,17 @@ export default function App() {
     event.preventDefault();
     setSignInState("sending");
     setSignInMessage("");
+    setToast("Sending sign-in email…");
     try {
       await sendSignInLink(email.trim());
       setSignInState("sent");
       setSignInMessage(`Sign-in email sent to ${email.trim()}.`);
+      setToast("Sign-in email sent. Check your inbox.");
     } catch (error) {
       setSignInState("idle");
-      setSignInMessage(error instanceof Error ? error.message : "Could not send the sign-in email.");
+      const text = error instanceof Error ? error.message : "Could not send the sign-in email.";
+      setSignInMessage(text);
+      setToast(text);
     }
   }
   async function verifyCode(event: React.FormEvent) {
@@ -664,7 +668,7 @@ export default function App() {
                     autoComplete="email"
                     required
                   />
-                  <button disabled={signInState === "sending" || signInState === "verifying"}>{signInState === "sending" ? "Sending…" : "Send sign-in email"}</button>
+                  <button type="submit" disabled={signInState === "sending" || signInState === "verifying"}>{signInState === "sending" ? "Sending…" : "Send sign-in email"}</button>
                 </form>
                 {signInState === "sent" && <form className="sign-in-code" onSubmit={verifyCode}>
                   <input value={signInCode} onChange={(e) => setSignInCode(e.target.value)} placeholder="Email code (if provided)" inputMode="numeric" autoComplete="one-time-code" />
