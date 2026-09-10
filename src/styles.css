@@ -311,6 +311,9 @@ select { padding: .55rem .65rem; }
 .diagnostics-setting { display: grid; gap: .35rem; padding: .1rem .15rem; }
 .diagnostics-setting label { display: flex; align-items: center; gap: .55rem; color: var(--text); font-size: .85rem; font-weight: 650; }
 .diagnostics-setting small { color: var(--text-muted); font-size: .72rem; }
+.translation-engine-setting { display: grid; gap: .35rem; padding: .1rem .15rem; }
+.translation-engine-setting label { display: grid; gap: .35rem; color: var(--text); font-size: .85rem; font-weight: 650; }
+.translation-engine-setting small { color: var(--text-muted); font-size: .72rem; }
 .cloud-translation { display: grid; gap: var(--space-2); padding: .8rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-elevated); }
 .cloud-translation strong { color: var(--text); font-size: .92rem; }
 .cloud-translation small { color: var(--text-muted); font-size: .72rem; line-height: 1.4; }

@@ -7,6 +7,7 @@ import type { Language, Meeting, TranscriptSegment } from "./types";
 
 type Theme = "system" | "light" | "dark";
 type SegmentTranslationStatus = { message: string; retryable?: boolean };
+type TranslationEngine = "cloud" | "local";
 const pageSize = 50;
 const translationLockKey = "roza-persian-translation-lock";
 const cloudModels: Record<CloudProvider, { value: string; label: string }[]> = {
@@ -59,6 +60,7 @@ export default function App() {
   const [cloudModel, setCloudModel] = useState(() => localStorage.getItem("roza-cloud-model") || "openrouter/free");
   const [cloudTranslating, setCloudTranslating] = useState(false);
   const [cloudAutoTranslate, setCloudAutoTranslate] = useState(() => localStorage.getItem("roza-cloud-auto-translate") !== "false");
+  const [translationEngine, setTranslationEngine] = useState<TranslationEngine>(() => (localStorage.getItem("roza-translation-engine") as TranslationEngine) || "cloud");
   const [segmentTranslationStatus, setSegmentTranslationStatus] = useState<Record<string, SegmentTranslationStatus>>({});
   const [showDiagnostics, setShowDiagnostics] = useState(() => localStorage.getItem("roza-show-diagnostics") === "true");
   const recognizer = useRef<ReturnType<typeof createRecognizer>>(null);
@@ -258,6 +260,16 @@ export default function App() {
     const raw = localStorage.getItem(translationLockKey);
     if (raw && JSON.parse(raw).tabId === tabId.current) localStorage.removeItem(translationLockKey);
   }
+  function selectTranslationEngine(engine: TranslationEngine) {
+    if (engine === "cloud") {
+      translationWorker.current?.terminate();
+      translationWorker.current = null;
+      setTranslationState("off");
+      releaseTranslationLock();
+    }
+    setTranslationEngine(engine);
+    localStorage.setItem("roza-translation-engine", engine);
+  }
   async function enableTranslation() {
     if (translationState !== "off") return;
     if (!persianModelSaved && !window.confirm("Download the offline Persian model? This one-time download is large, so Wi-Fi is recommended.")) return;
@@ -400,8 +412,8 @@ export default function App() {
     await loadSegments(meetingId);
     await loadMeetings();
     if (saved) {
-      if (cloudAutoTranslate && user) scheduleCloudTranslation(saved, source);
-      else requestTranslation(saved, source);
+      if (translationEngine === "cloud" && cloudAutoTranslate && user) scheduleCloudTranslation(saved, source);
+      if (translationEngine === "local") requestTranslation(saved, source);
     }
     if (user) void runSync(user);
   }
@@ -774,17 +786,17 @@ export default function App() {
         </nav>
         <details className="settings-panel">
           <summary>Settings</summary>
-          <section className="diagnostics-setting">
+          <section className="translation-engine-setting">
             <label>
-              <input type="checkbox" checked={showDiagnostics} onChange={(event) => {
-                setShowDiagnostics(event.target.checked);
-                localStorage.setItem("roza-show-diagnostics", String(event.target.checked));
-              }} />
-              Show diagnostics
+              Translation engine
+              <select value={translationEngine} onChange={(event) => selectTranslationEngine(event.target.value as TranslationEngine)}>
+                <option value="cloud">Cloud AI</option>
+                <option value="local">Local / offline AI</option>
+              </select>
             </label>
-            <small>Show temporary transcription and translation logs while troubleshooting.</small>
+            <small>{translationEngine === "cloud" ? "Uses your selected cloud provider. The offline model is inactive." : "Runs only on this device. Cloud AI is inactive."}</small>
           </section>
-          <section className={`translation-panel ${persianModelSaved ? "translation-ready" : ""}`}>
+          {translationEngine === "local" && <section className={`translation-panel ${persianModelSaved ? "translation-ready" : ""}`}>
             <div>
               <p className="eyebrow">Offline translation</p>
               <strong>Persian</strong>
@@ -793,8 +805,8 @@ export default function App() {
               {translationState === "loading" ? `Downloading ${translationProgress}%` : persianModelSaved ? "✓ Persian model ready" : "Download Persian model"}
             </button>
             <small>{persianModelSaved ? "Saved on this device" : "Optional · no paid API"}</small>
-          </section>
-          <section className="cloud-translation">
+          </section>}
+          {translationEngine === "cloud" && <section className="cloud-translation">
             <div>
               <p className="eyebrow">High-quality cloud translation</p>
               <strong>Translate the current session to Persian</strong>
@@ -828,6 +840,16 @@ export default function App() {
               </button>
             </div>
             <small>{!user ? "Sign in first so Roza can securely call your selected provider." : cloudAutoTranslate ? "Each finalized new chunk is sent to the selected provider." : !active ? "Select or create a session first." : "Only when you press Translate with AI is this session sent to the selected provider."}</small>
+          </section>}
+          <section className="diagnostics-setting">
+            <label>
+              <input type="checkbox" checked={showDiagnostics} onChange={(event) => {
+                setShowDiagnostics(event.target.checked);
+                localStorage.setItem("roza-show-diagnostics", String(event.target.checked));
+              }} />
+              Show diagnostics
+            </label>
+            <small>Show temporary transcription and translation logs while troubleshooting.</small>
           </section>
         </details>
         <div className="account-panel">
