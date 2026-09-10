@@ -58,12 +58,20 @@ export default function App() {
     await loadMeetings(); if (user) void runSync(user);
   }
   async function saveFinal(text: string) {
-    const meeting = activeRef.current ? await db.meetings.get(activeRef.current) : undefined;
-    if (!meeting || !text) return;
-    const now = Date.now(), segment: TranscriptSegment = { id: crypto.randomUUID(), meetingId: meeting.id, sequence: meeting.lastPersistedSequence + 1, text, recognizedText: text, createdAt: now, updatedAt: now };
-    const updated = { ...meeting, lastPersistedSequence: segment.sequence, updatedAt: now };
-    await db.transaction("rw", db.meetings, db.segments, db.searchEntries, db.syncOperations, async () => { await db.meetings.put(updated); await db.segments.add(segment); await db.searchEntries.put({ id: `segment:${segment.id}`, meetingId: meeting.id, segmentId: segment.id, source: "transcript", normalizedText: normalize(text), preview: text }); if (user) { await queueSync("meeting", meeting.id, "upsert"); await queueSync("segment", segment.id, "upsert"); } });
-    setInterim(""); await loadSegments(meeting.id); await loadMeetings(); if (user) void runSync(user);
+    const meetingId = activeRef.current;
+    if (!meetingId || !text) return;
+    await db.transaction("rw", db.meetings, db.segments, db.searchEntries, db.syncOperations, async () => {
+      const meeting = await db.meetings.get(meetingId);
+      if (!meeting) return;
+      const now = Date.now();
+      const segment: TranscriptSegment = { id: crypto.randomUUID(), meetingId, sequence: meeting.lastPersistedSequence + 1, text, recognizedText: text, createdAt: now, updatedAt: now };
+      const updated = { ...meeting, lastPersistedSequence: segment.sequence, updatedAt: now };
+      await db.meetings.put(updated);
+      await db.segments.add(segment);
+      await db.searchEntries.put({ id: `segment:${segment.id}`, meetingId, segmentId: segment.id, source: "transcript", normalizedText: normalize(text), preview: text });
+      if (user) { await queueSync("meeting", meetingId, "upsert"); await queueSync("segment", segment.id, "upsert"); }
+    });
+    setInterim(""); await loadSegments(meetingId); await loadMeetings(); if (user) void runSync(user);
   }
   async function start() {
     if (!active) return;

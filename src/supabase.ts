@@ -75,7 +75,7 @@ export async function sync(user: User) {
     } else {
       const segment = await db.segments.get(operation.entityId);
       if (segment) {
-        const result = await supabase.from("transcript_segments").upsert(toCloudSegment(segment, user.id));
+        const result = await supabase.from("transcript_segments").upsert(toCloudSegment(segment, user.id), { onConflict: "meeting_id,sequence" });
         error = result.error;
       }
     }
