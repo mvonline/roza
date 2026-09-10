@@ -38,8 +38,7 @@ button, select {
 .content { padding: 1.5rem; max-width: 900px; width: 100%; margin: 0 auto; }
 .brand-row, .topbar, .controls, .meeting-options { display: flex; align-items: center; gap: .75rem; justify-content: space-between; }
 .search, .meeting-options input, .account-panel input, .title-input { width: 100%; border: 1px solid #cfc7e1; border-radius: .6rem; background: transparent; color: inherit; padding: .65rem; }
-.meeting-list { display: grid; align-content: start; gap: .5rem; height: clamp(14rem, 45vh, 34rem); overflow-y: auto; overscroll-behavior: contain; padding: .1rem .35rem .2rem .1rem; scrollbar-width: none; }
-.meeting-list::-webkit-scrollbar { display: none; }
+.meeting-list { display: grid; align-content: start; gap: .5rem; height: clamp(14rem, 45vh, 34rem); overflow-y: auto; overscroll-behavior: contain; padding: .1rem .35rem .2rem .1rem; }
 .label-section { display: grid; gap: .4rem; }
 .label-list { display: flex; flex-wrap: wrap; gap: .35rem; }
 .label-list button { background: transparent; border: 1px solid #cfc7e1; color: inherit; border-radius: 999px; padding: .3rem .55rem; font-size: .78rem; }
