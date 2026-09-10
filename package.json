@@ -11,6 +11,7 @@
   "dependencies": {
     "@vitejs/plugin-react": "latest",
     "@supabase/supabase-js": "latest",
+    "@huggingface/transformers": "latest",
     "dexie": "latest",
     "vite": "latest",
     "react": "latest",

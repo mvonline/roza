@@ -38,13 +38,17 @@ button, select {
 .content { padding: 1.5rem; max-width: 900px; width: 100%; margin: 0 auto; }
 .brand-row, .topbar, .controls, .meeting-options { display: flex; align-items: center; gap: .75rem; justify-content: space-between; }
 .search, .meeting-options input, .account-panel input, .title-input { width: 100%; border: 1px solid #cfc7e1; border-radius: .6rem; background: transparent; color: inherit; padding: .65rem; }
-.meeting-list { display: grid; gap: .3rem; overflow: auto; }
+.meeting-list { display: grid; gap: .35rem; height: clamp(14rem, 45vh, 34rem); overflow-y: auto; overscroll-behavior: contain; padding-right: .2rem; scrollbar-width: none; }
+.meeting-list::-webkit-scrollbar { display: none; }
 .label-section { display: grid; gap: .4rem; }
 .label-list { display: flex; flex-wrap: wrap; gap: .35rem; }
 .label-list button { background: transparent; border: 1px solid #cfc7e1; color: inherit; border-radius: 999px; padding: .3rem .55rem; font-size: .78rem; }
 .label-list .label-active { background: #7b4dff; border-color: #7b4dff; color: white; }
-.meeting-item { display: grid; text-align: left; background: transparent; color: inherit; padding: .65rem; }
-.meeting-item.selected { background: #7b4dff; color: white; }
+.applied-labels { display: flex; flex-wrap: wrap; gap: .35rem; }
+.applied-labels span { border-radius: 999px; background: #e4dcff; color: #4b328f; padding: .3rem .55rem; font-size: .78rem; }
+.meeting-item { display: grid; text-align: left; background: color-mix(in srgb, Canvas 92%, #e4dcff); color: inherit; padding: .75rem; border: 1px solid transparent; border-radius: .75rem; }
+.meeting-item:hover { border-color: #b8a9ed; }
+.meeting-item.selected { background: #7b4dff; color: white; box-shadow: 0 5px 16px #7b4dff44; }
 .meeting-item span, .meeting-item small { font-size: .75rem; opacity: .8; }
 .account-panel { display: grid; gap: .5rem; margin-top: auto; font-size: .8rem; }
 .account-panel form { display: grid; gap: .5rem; }
@@ -64,6 +68,9 @@ button, select {
 .transcript article::before { content: counter(row); color: #6e6680; font-size: .8rem; font-variant-numeric: tabular-nums; }
 .transcript time { font-size: .8rem; color: #6e6680; }
 textarea { min-height: 3rem; width: 100%; resize: vertical; border: 0; background: transparent; color: inherit; font: inherit; line-height: 1.5; }
+.translated-text { grid-column: 2 / -1; margin: 0; color: #4b328f; line-height: 1.7; }
+
+:root[data-theme="dark"] .translated-text { color: #d9cfff; }
 
 header {
   display: flex;
@@ -97,6 +104,12 @@ select {
   background: transparent;
   color: inherit;
   padding: .45rem;
+}
+
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] select option {
+  background: #201b2d;
+  color: #f4efff;
 }
 
 .welcome-card {

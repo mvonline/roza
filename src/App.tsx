@@ -38,9 +38,12 @@ export default function App() {
     supabase ? "Sign in to sync" : "Saved on this device",
   );
   const [toast, setToast] = useState<string | null>(null);
+  const [translationState, setTranslationState] = useState<"off" | "loading" | "ready">("off");
+  const [translationProgress, setTranslationProgress] = useState(0);
   const recognizer = useRef<ReturnType<typeof createRecognizer>>(null);
   const activeRef = useRef<string | null>(null);
   const stopped = useRef(false);
+  const translationWorker = useRef<Worker | null>(null);
 
   const loadMeetings = useCallback(async () => {
     const term = normalize(search);
@@ -98,6 +101,7 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("roza-theme", theme);
   }, [theme]);
+  useEffect(() => () => translationWorker.current?.terminate(), []);
   useEffect(() => {
     if (!toast || toast.startsWith("Syncing")) return;
     const timer = window.setTimeout(() => setToast(null), 4500);
@@ -132,6 +136,44 @@ export default function App() {
   }, [runSync, user]);
 
   const active = meetings.find((m) => m.id === activeId) || null;
+  async function saveTranslation(id: string, translatedText: string) {
+    const segment = await db.segments.get(id);
+    if (!segment) return;
+    await db.segments.put({ ...segment, translatedText, updatedAt: Date.now() });
+    if (user) { await queueSync("segment", id, "upsert"); void runSync(user); }
+    await loadSegments(segment.meetingId);
+  }
+  function requestTranslation(segment: TranscriptSegment, source: Language) {
+    if (translationState === "ready") translationWorker.current?.postMessage({ type: "translate", id: segment.id, text: segment.text, source: source === "sv-SE" ? "swe_Latn" : "eng_Latn" });
+  }
+  async function enableTranslation() {
+    if (translationState !== "off") return;
+    if (!window.confirm("Download the Persian translation model from Hugging Face? This one-time download is large and works best on Wi-Fi.")) return;
+    const worker = new Worker(new URL("./translation.worker.ts", import.meta.url), { type: "module" });
+    translationWorker.current = worker;
+    setTranslationState("loading");
+    worker.onmessage = (event: MessageEvent<{ type: string; id?: string; text?: string; progress?: number; message?: string }>) => {
+      if (event.data.type === "progress") setTranslationProgress(Math.round(event.data.progress ?? 0));
+      if (event.data.type === "translated" && event.data.id) void saveTranslation(event.data.id, event.data.text ?? "");
+      if (event.data.type === "error") { setTranslationState("off"); setToast(event.data.message ?? "Translation failed."); }
+      if (event.data.type === "ready") {
+        setTranslationState("ready");
+        setToast("Persian translation is ready");
+        if (activeRef.current) {
+          void Promise.all([
+            db.meetings.get(activeRef.current),
+            db.segments.where("meetingId").equals(activeRef.current).toArray(),
+          ]).then(([meeting, rows]) => {
+            const source = meeting?.language === "en-US" ? "eng_Latn" : "swe_Latn";
+            rows
+              .filter((row) => !row.translatedText && !row.deletedAt)
+              .forEach((row) => worker.postMessage({ type: "translate", id: row.id, text: row.text, source }));
+          });
+        }
+      }
+    };
+    worker.postMessage({ type: "load" });
+  }
   async function createMeeting() {
     const now = Date.now();
     const meeting: Meeting = {
@@ -187,6 +229,8 @@ export default function App() {
   async function saveFinal(text: string) {
     const meetingId = activeRef.current;
     if (!meetingId || !text) return;
+    let saved: TranscriptSegment | undefined;
+    let source: Language = "sv-SE";
     await db.transaction(
       "rw",
       db.meetings,
@@ -196,6 +240,7 @@ export default function App() {
       async () => {
         const meeting = await db.meetings.get(meetingId);
         if (!meeting) return;
+        source = meeting.language;
         const now = Date.now();
         const segment: TranscriptSegment = {
           id: crypto.randomUUID(),
@@ -213,6 +258,7 @@ export default function App() {
         };
         await db.meetings.put(updated);
         await db.segments.add(segment);
+        saved = segment;
         await db.searchEntries.put({
           id: `segment:${segment.id}`,
           meetingId,
@@ -230,6 +276,7 @@ export default function App() {
     setInterim("");
     await loadSegments(meetingId);
     await loadMeetings();
+    if (saved) requestTranslation(saved, source);
     if (user) void runSync(user);
   }
   async function start() {
@@ -368,7 +415,10 @@ export default function App() {
             {labels.map((label) => <button key={label} className={labelFilter === label ? "label-active" : ""} onClick={() => { setLabelFilter(label); setPage(1); }}>{label}</button>)}
           </div>
         </section>
-        <nav className="meeting-list">
+        <nav className="meeting-list" onScroll={(event) => {
+          const list = event.currentTarget;
+          if (!search && meetings.length >= page * pageSize && list.scrollTop + list.clientHeight >= list.scrollHeight - 24) setPage((value) => value + 1);
+        }}>
           {meetings.map((m) => (
             <button
               key={m.id}
@@ -383,9 +433,6 @@ export default function App() {
               {m.labels.length > 0 && <small>{m.labels.join(" · ")}</small>}
             </button>
           ))}
-          {!search && meetings.length >= page * pageSize && (
-            <button onClick={() => setPage((n) => n + 1)}>Load more</button>
-          )}
         </nav>
         <div className="account-panel">
           {supabase ? (
@@ -456,7 +503,11 @@ export default function App() {
                 }
                 placeholder="Labels, separated by commas"
               />
+              <button type="button" onClick={() => void enableTranslation()} disabled={translationState !== "off"}>
+                {translationState === "loading" ? `Downloading Persian ${translationProgress}%` : translationState === "ready" ? "Persian on" : "Persian translation"}
+              </button>
             </div>
+            {active.labels.length > 0 && <div className="applied-labels">{active.labels.map((label) => <span key={label}>{label}</span>)}</div>}
             <div className="caption-card">
               <p className="eyebrow">
                 {active.status === "recording"
@@ -493,6 +544,7 @@ export default function App() {
                       value={s.text}
                       onChange={(e) => void edit(s, e.target.value)}
                     />
+                    {s.translatedText && <p className="translated-text" dir="rtl" lang="fa">{s.translatedText}</p>}
                   </article>
                 ))
               ) : (
