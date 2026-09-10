@@ -305,6 +305,15 @@ select { padding: .55rem .65rem; }
 }
 .translation-panel.translation-ready button { background: var(--success); color: white; }
 .translation-panel.translation-ready button:hover { background: color-mix(in srgb, var(--success) 85%, black); }
+.settings-panel { display: grid; gap: var(--space-2); }
+.settings-panel summary { cursor: pointer; color: var(--text); font-size: .88rem; font-weight: 700; }
+.settings-panel[open] summary { margin-bottom: var(--space-1); }
+.cloud-translation { display: grid; gap: var(--space-2); padding: .8rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-elevated); }
+.cloud-translation strong { color: var(--text); font-size: .92rem; }
+.cloud-translation small { color: var(--text-muted); font-size: .72rem; line-height: 1.4; }
+.cloud-controls { display: grid; grid-template-columns: 1fr 1fr; gap: .45rem; }
+.cloud-controls button { grid-column: 1 / -1; width: 100%; padding: .55rem .7rem; font-size: .78rem; }
+.cloud-controls select { min-width: 0; font-size: .78rem; }
 
 .label-section { display: grid; gap: .5rem; }
 .label-list { display: flex; flex-wrap: wrap; gap: .4rem; }

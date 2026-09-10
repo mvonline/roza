@@ -19,6 +19,20 @@ export async function currentUser() {
   return data.user;
 }
 
+export type CloudProvider = "openai" | "anthropic" | "gemini" | "openrouter";
+
+export async function translateWithCloud(provider: CloudProvider, model: string, texts: string[], sourceLanguage: "Swedish" | "English") {
+  if (!supabase) throw new Error("Cloud translation is not configured yet.");
+  const { data, error } = await supabase.functions.invoke("translate", {
+    body: { provider, model, texts, sourceLanguage }
+  });
+  if (error) throw error;
+  if (!Array.isArray(data?.translations) || data.translations.some((text: unknown) => typeof text !== "string")) {
+    throw new Error("The translation service returned an invalid response.");
+  }
+  return data.translations as string[];
+}
+
 export async function claimLocalMeetings(userId: string) {
   const meetings = await db.meetings.filter((meeting) => !meeting.userId).toArray();
   for (const meeting of meetings) {

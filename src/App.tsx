@@ -2,12 +2,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { db, normalize, queueSync, rebuildMeetingSearch } from "./db";
 import { createRecognizer, hasSpeechRecognition } from "./speech";
-import { currentUser, sendSignInLink, supabase, sync } from "./supabase";
+import { currentUser, sendSignInLink, supabase, sync, translateWithCloud, type CloudProvider } from "./supabase";
 import type { Language, Meeting, TranscriptSegment } from "./types";
 
 type Theme = "system" | "light" | "dark";
 const pageSize = 50;
 const translationLockKey = "roza-persian-translation-lock";
+const cloudModels: Record<CloudProvider, { value: string; label: string }[]> = {
+  openai: [{ value: "gpt-4.1-mini", label: "GPT-4.1 mini" }, { value: "gpt-4.1", label: "GPT-4.1" }],
+  anthropic: [{ value: "claude-sonnet-4-20250514", label: "Claude Sonnet" }, { value: "claude-haiku-4-5-20251001", label: "Claude Haiku" }],
+  gemini: [{ value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" }, { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" }],
+  openrouter: [{ value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash" }, { value: "anthropic/claude-sonnet-4", label: "Claude Sonnet" }, { value: "openai/gpt-4.1", label: "GPT-4.1" }]
+};
 const dateTitle = () =>
   new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
@@ -43,6 +49,9 @@ export default function App() {
   const [translationState, setTranslationState] = useState<"off" | "loading" | "ready">("off");
   const [translationProgress, setTranslationProgress] = useState(0);
   const [persianModelSaved, setPersianModelSaved] = useState(() => localStorage.getItem("roza-persian-model") === "saved");
+  const [cloudProvider, setCloudProvider] = useState<CloudProvider>(() => (localStorage.getItem("roza-cloud-provider") as CloudProvider) || "openrouter");
+  const [cloudModel, setCloudModel] = useState(() => localStorage.getItem("roza-cloud-model") || "google/gemini-2.5-flash");
+  const [cloudTranslating, setCloudTranslating] = useState(false);
   const recognizer = useRef<ReturnType<typeof createRecognizer>>(null);
   const activeRef = useRef<string | null>(null);
   const stopped = useRef(false);
@@ -448,6 +457,34 @@ export default function App() {
     URL.revokeObjectURL(url);
     setToast("Transcript exported");
   }
+  async function translateSessionWithCloud() {
+    if (!active || !user) return setToast("Sign in before using cloud translation.");
+    const pending = segments.filter((segment) => !segment.deletedAt && segment.text.trim() && !segment.translatedText);
+    if (!pending.length) return setToast("This session is already translated.");
+    if (!window.confirm(`Send ${pending.length} transcript parts to ${cloudProvider} for Persian translation? This uses that provider's account and privacy policy.`)) return;
+    setCloudTranslating(true);
+    try {
+      const translations: string[] = [];
+      for (let index = 0; index < pending.length; index += 20) {
+        const batch = pending.slice(index, index + 20);
+        translations.push(...await translateWithCloud(cloudProvider, cloudModel, batch.map((segment) => segment.text), active.language === "sv-SE" ? "Swedish" : "English"));
+      }
+      if (translations.length !== pending.length) throw new Error("Some transcript parts were not translated.");
+      await db.transaction("rw", db.segments, db.syncOperations, async () => {
+        for (const [index, segment] of pending.entries()) {
+          await db.segments.put({ ...segment, translatedText: translations[index], updatedAt: Date.now() });
+          await queueSync("segment", segment.id, "upsert");
+        }
+      });
+      await loadSegments(active.id);
+      void runSync(user);
+      setToast("Cloud translation complete");
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "Cloud translation failed.");
+    } finally {
+      setCloudTranslating(false);
+    }
+  }
   async function signIn(event: React.FormEvent) {
     event.preventDefault();
     try {
@@ -510,16 +547,6 @@ export default function App() {
           }}
           placeholder="Search lessons"
         />
-        <section className={`translation-panel ${persianModelSaved ? "translation-ready" : ""}`}>
-          <div>
-            <p className="eyebrow">Offline translation</p>
-            <strong>Persian</strong>
-          </div>
-          <button type="button" onClick={() => void enableTranslation()} disabled={translationState !== "off"}>
-            {translationState === "loading" ? `Downloading ${translationProgress}%` : persianModelSaved ? "✓ Persian model ready" : "Download Persian model"}
-          </button>
-          <small>{persianModelSaved ? "Saved on this device" : "Optional · no paid API"}</small>
-        </section>
         <section className="label-section">
           <p className="eyebrow">Labels</p>
           <div className="label-list">
@@ -549,6 +576,47 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <details className="settings-panel">
+          <summary>Settings</summary>
+          <section className={`translation-panel ${persianModelSaved ? "translation-ready" : ""}`}>
+            <div>
+              <p className="eyebrow">Offline translation</p>
+              <strong>Persian</strong>
+            </div>
+            <button type="button" onClick={() => void enableTranslation()} disabled={translationState !== "off"}>
+              {translationState === "loading" ? `Downloading ${translationProgress}%` : persianModelSaved ? "✓ Persian model ready" : "Download Persian model"}
+            </button>
+            <small>{persianModelSaved ? "Saved on this device" : "Optional · no paid API"}</small>
+          </section>
+          <section className="cloud-translation">
+            <div>
+              <p className="eyebrow">High-quality cloud translation</p>
+              <strong>Translate the current session to Persian</strong>
+            </div>
+            <div className="cloud-controls">
+              <select value={cloudProvider} onChange={(event) => {
+                const provider = event.target.value as CloudProvider;
+                const model = cloudModels[provider][0].value;
+                setCloudProvider(provider);
+                setCloudModel(model);
+                localStorage.setItem("roza-cloud-provider", provider);
+                localStorage.setItem("roza-cloud-model", model);
+              }}>
+                <option value="openrouter">OpenRouter</option>
+                <option value="openai">OpenAI / ChatGPT</option>
+                <option value="anthropic">Anthropic / Claude</option>
+                <option value="gemini">Google Gemini</option>
+              </select>
+              <select value={cloudModel} onChange={(event) => { setCloudModel(event.target.value); localStorage.setItem("roza-cloud-model", event.target.value); }}>
+                {cloudModels[cloudProvider].map((model) => <option key={model.value} value={model.value}>{model.label}</option>)}
+              </select>
+              <button type="button" onClick={() => void translateSessionWithCloud()} disabled={cloudTranslating || !user || !active}>
+                {cloudTranslating ? "Translating…" : "Translate with AI"}
+              </button>
+            </div>
+            <small>Only when you press Translate with AI is this session sent to the selected provider.</small>
+          </section>
+        </details>
         <div className="account-panel">
           {supabase ? (
             user ? (
