@@ -39,6 +39,7 @@ export default function App() {
     supabase ? "Sign in to sync" : "Saved on this device",
   );
   const [toast, setToast] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [translationState, setTranslationState] = useState<"off" | "loading" | "ready">("off");
   const [translationProgress, setTranslationProgress] = useState(0);
   const [persianModelSaved, setPersianModelSaved] = useState(() => localStorage.getItem("roza-persian-model") === "saved");
@@ -231,6 +232,7 @@ export default function App() {
     setSearch("");
     setPage(1);
     setActiveId(meeting.id);
+    setSidebarOpen(false);
     await loadMeetings();
     if (user) void runSync(user);
   }
@@ -428,15 +430,38 @@ export default function App() {
     await Promise.all(keys.map((key) => caches.delete(key)));
     window.location.reload();
   }
+  const statusLabel: Record<Meeting["status"], string> = {
+    recording: "Recording",
+    paused: "Paused",
+    interrupted: "Interrupted",
+    complete: "Complete",
+  };
   return (
     <main className="app-shell">
-      <aside className="sidebar">
+      {sidebarOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
         <div className="brand-row">
           <div>
             <p className="eyebrow">Study companion</p>
             <h1>Roza</h1>
           </div>
-          <button onClick={() => void createMeeting()}>+ New</button>
+          <div className="brand-actions">
+            <button onClick={() => void createMeeting()}>+ New</button>
+            <button
+              type="button"
+              className="icon-btn sidebar-close"
+              aria-label="Close sessions"
+              onClick={() => setSidebarOpen(false)}
+            >
+              ✕
+            </button>
+          </div>
         </div>
         <input
           className="search"
@@ -472,7 +497,10 @@ export default function App() {
             <button
               key={m.id}
               className={`meeting-item ${m.id === activeId ? "selected" : ""}`}
-              onClick={() => setActiveId(m.id)}
+              onClick={() => {
+                setActiveId(m.id);
+                setSidebarOpen(false);
+              }}
             >
               <strong>{m.title}</strong>
               <span>
@@ -511,26 +539,51 @@ export default function App() {
       </aside>
       <section className="content">
         <header className="topbar">
-          <label>
-            Theme{" "}
-            <select
-              value={theme}
-              onChange={(e) => setTheme(e.target.value as Theme)}
-            >
-              <option value="system">System</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </label>
-          {user && <button disabled={syncState === "Syncing"} onClick={() => void runSync(user)}>{syncState === "Syncing" ? "Syncing…" : "Sync now"}</button>}
+          <button
+            type="button"
+            className="icon-btn menu-toggle"
+            aria-label="Open sessions"
+            onClick={() => setSidebarOpen(true)}
+          >
+            ☰
+          </button>
+          <span className="topbar-title">{active ? active.title : "Roza"}</span>
+          <div className="topbar-actions">
+            {user && (
+              <button
+                className="quiet sync-btn"
+                disabled={syncState === "Syncing"}
+                onClick={() => void runSync(user)}
+              >
+                {syncState === "Syncing" ? "Syncing…" : "Sync now"}
+              </button>
+            )}
+            <label className="theme-select">
+              <span className="sr-only">Theme</span>
+              <select
+                value={theme}
+                onChange={(e) => setTheme(e.target.value as Theme)}
+              >
+                <option value="system">System</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+          </div>
         </header>
         {active ? (
           <section className="meeting-view">
-            <input
-              className="title-input"
-              value={active.title}
-              onChange={(e) => void saveMeeting({ title: e.target.value })}
-            />
+            <div className="title-row">
+              <input
+                className="title-input"
+                value={active.title}
+                onChange={(e) => void saveMeeting({ title: e.target.value })}
+              />
+              <span className={`status-badge status-${active.status}`}>
+                {active.status === "recording" && <span className="status-dot" />}
+                {statusLabel[active.status]}
+              </span>
+            </div>
             <div className="meeting-options">
               <select
                 value={active.language}
@@ -566,16 +619,21 @@ export default function App() {
               </div>
             </div>
             <div className="controls">
-              {active.status === "recording" ? (
-                <button onClick={() => void stop("paused")}>Pause</button>
-              ) : (
-                <button onClick={() => void start()}>
-                  {active.status === "complete" ? "Resume" : "Start"}
+              <div className="controls-primary">
+                {active.status === "recording" ? (
+                  <button className="pause-btn" onClick={() => void stop("paused")}>
+                    <span className="btn-icon">⏸</span> Pause
+                  </button>
+                ) : (
+                  <button className="record-btn" onClick={() => void start()}>
+                    <span className="btn-icon">●</span>
+                    {active.status === "complete" ? "Resume" : "Start"}
+                  </button>
+                )}
+                <button className="quiet" onClick={() => void stop("complete")}>
+                  Finish
                 </button>
-              )}
-              <button className="quiet" onClick={() => void stop("complete")}>
-                Finish
-              </button>
+              </div>
               <button className="danger" onClick={() => void deleteMeeting()}>
                 Delete session
               </button>
@@ -603,8 +661,13 @@ export default function App() {
           </section>
         ) : (
           <section className="empty-state">
+            <div className="empty-state-icon" aria-hidden="true">🎙️</div>
             <p className="eyebrow">Swedish and English live subtitles</p>
             <h2>Start a lesson when you are ready.</h2>
+            <p className="empty-state-hint">
+              Your captions and transcript stay on this device, and sync privately
+              when you sign in.
+            </p>
             <button onClick={() => void createMeeting()}>New session</button>
           </section>
         )}
