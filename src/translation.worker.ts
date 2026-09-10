@@ -3,11 +3,18 @@ let translator: Promise<any> | null = null;
 
 async function loadTranslator() {
   if (!translator) {
-    translator = import("@huggingface/transformers").then(({ pipeline }) => pipeline("translation", "Xenova/nllb-200-distilled-600M", {
-      progress_callback: (info: { status?: string; progress?: number }) => {
-        if (info.status === "progress_total") postMessage({ type: "progress", progress: info.progress ?? 0 });
-      }
-    }));
+    translator = import("@huggingface/transformers")
+      .then(({ pipeline }) => pipeline("translation", "Xenova/nllb-200-distilled-600M", {
+        device: "wasm",
+        dtype: "q8",
+        progress_callback: (info: { status?: string; progress?: number }) => {
+          if (info.status === "progress_total") postMessage({ type: "progress", progress: info.progress ?? 0 });
+        }
+      }))
+      .catch((error) => {
+        translator = null;
+        throw error;
+      });
   }
   return translator;
 }
