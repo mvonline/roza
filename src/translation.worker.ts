@@ -3,15 +3,30 @@ let translator: Promise<any> | null = null;
 
 async function loadTranslator() {
   if (!translator) {
+    // transformers.js downloads several files (config, tokenizer, weight shards) in
+    // parallel, each reporting its own 0-100% progress. Track bytes per file and report
+    // one combined percentage, otherwise the displayed number jumps around as files interleave.
+    const filesInFlight = new Map<string, { loaded: number; total: number }>();
     translator = import("@huggingface/transformers")
       .then(({ pipeline }) => pipeline("translation", "Xenova/nllb-200-distilled-600M", {
         device: "wasm",
         dtype: "q8",
-        progress_callback: (info: { status?: string; progress?: number; loaded?: number; total?: number }) => {
-          if (info.status === "progress") {
-            const progress = info.progress ?? (info.total ? (info.loaded ?? 0) / info.total * 100 : 0);
-            postMessage({ type: "progress", progress });
+        progress_callback: (info: { status?: string; file?: string; progress?: number; loaded?: number; total?: number }) => {
+          if (info.status !== "progress" && info.status !== "initiate") return;
+          const key = info.file ?? "default";
+          if (info.status === "initiate") {
+            filesInFlight.set(key, { loaded: 0, total: 0 });
+          } else if (info.total) {
+            filesInFlight.set(key, { loaded: info.loaded ?? 0, total: info.total });
           }
+          let loaded = 0;
+          let total = 0;
+          for (const file of filesInFlight.values()) {
+            loaded += file.loaded;
+            total += file.total;
+          }
+          const progress = total ? (loaded / total) * 100 : 0;
+          postMessage({ type: "progress", progress });
         }
       }))
       .catch((error) => {
