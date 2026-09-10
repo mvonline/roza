@@ -12,6 +12,11 @@ type Recognition = {
   onresult: ((event: RecognitionEvent) => void) | null;
   onend: (() => void) | null;
   onerror: ((event: { error: string }) => void) | null;
+  onstart: (() => void) | null;
+  onaudiostart: (() => void) | null;
+  onaudioend: (() => void) | null;
+  onspeechstart: (() => void) | null;
+  onspeechend: (() => void) | null;
 };
 type RecognitionCtor = new () => Recognition;
 
@@ -41,7 +46,7 @@ export function speechErrorMessage(error: string) {
   return `Transcription stopped: ${error}`;
 }
 
-export function createRecognizer(language: Language, onInterim: (text: string) => void, onFinal: (text: string) => void, onEnd: () => void, onError: (message: string) => void) {
+export function createRecognizer(language: Language, onInterim: (text: string) => void, onFinal: (text: string) => void, onEnd: () => void, onError: (message: string) => void, onEvent?: (event: string) => void) {
   const browser = window as typeof window & { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor };
   const Constructor = browser.SpeechRecognition || browser.webkitSpeechRecognition;
   if (!Constructor) return null;
@@ -61,5 +66,10 @@ export function createRecognizer(language: Language, onInterim: (text: string) =
   };
   recognition.onend = onEnd;
   recognition.onerror = (event) => onError(event.error);
+  recognition.onstart = () => onEvent?.("Recognition service started");
+  recognition.onaudiostart = () => onEvent?.("Microphone audio reached recognition");
+  recognition.onaudioend = () => onEvent?.("Microphone audio ended");
+  recognition.onspeechstart = () => onEvent?.("Speech detected");
+  recognition.onspeechend = () => onEvent?.("Speech ended");
   return recognition;
 }

@@ -449,6 +449,7 @@ export default function App() {
           void saveMeeting({ status: "paused" });
         }
       },
+      traceSpeech,
     );
     if (!next) {
       recognitionStarting.current = false;
