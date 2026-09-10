@@ -75,6 +75,7 @@ button, select {
 :root[data-theme="dark"] .meeting-item.selected strong { color: #f7f4ff; }
 .account-panel { display: grid; gap: .5rem; margin-top: auto; font-size: .8rem; }
 .account-panel form { display: grid; gap: .5rem; }
+.cache-reset { justify-self: start; padding: .45rem .65rem; font-size: .75rem; font-weight: 600; }
 .topbar { justify-content: flex-end; margin-bottom: 2rem; }
 .meeting-view, .empty-state { display: grid; gap: 1rem; }
 .title-input { border: 0; font-size: clamp(1.5rem, 4vw, 2.2rem); font-weight: 700; padding: 0; }

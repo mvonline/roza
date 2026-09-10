@@ -7,6 +7,7 @@ import type { Language, Meeting, TranscriptSegment } from "./types";
 
 type Theme = "system" | "light" | "dark";
 const pageSize = 50;
+const translationLockKey = "roza-persian-translation-lock";
 const dateTitle = () =>
   new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
@@ -45,6 +46,7 @@ export default function App() {
   const activeRef = useRef<string | null>(null);
   const stopped = useRef(false);
   const translationWorker = useRef<Worker | null>(null);
+  const tabId = useRef(crypto.randomUUID());
 
   const loadMeetings = useCallback(async () => {
     const term = normalize(search);
@@ -102,7 +104,11 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("roza-theme", theme);
   }, [theme]);
-  useEffect(() => () => translationWorker.current?.terminate(), []);
+  useEffect(() => () => {
+    translationWorker.current?.terminate();
+    const lock = localStorage.getItem(translationLockKey);
+    if (lock && JSON.parse(lock).tabId === tabId.current) localStorage.removeItem(translationLockKey);
+  }, []);
   useEffect(() => {
     if (!toast || toast.startsWith("Syncing")) return;
     const timer = window.setTimeout(() => setToast(null), 4500);
@@ -147,9 +153,24 @@ export default function App() {
   function requestTranslation(segment: TranscriptSegment, source: Language) {
     if (translationState === "ready") translationWorker.current?.postMessage({ type: "translate", id: segment.id, text: segment.text, source: source === "sv-SE" ? "swe_Latn" : "eng_Latn" });
   }
+  function claimTranslationLock() {
+    const raw = localStorage.getItem(translationLockKey);
+    const current = raw ? JSON.parse(raw) as { tabId: string; expiresAt: number } : null;
+    if (current && current.tabId !== tabId.current && current.expiresAt > Date.now()) return false;
+    localStorage.setItem(translationLockKey, JSON.stringify({ tabId: tabId.current, expiresAt: Date.now() + 30 * 60 * 1000 }));
+    return JSON.parse(localStorage.getItem(translationLockKey) || "{}").tabId === tabId.current;
+  }
+  function releaseTranslationLock() {
+    const raw = localStorage.getItem(translationLockKey);
+    if (raw && JSON.parse(raw).tabId === tabId.current) localStorage.removeItem(translationLockKey);
+  }
   async function enableTranslation() {
     if (translationState !== "off") return;
     if (!persianModelSaved && !window.confirm("Download the offline Persian model? This one-time download is large, so Wi-Fi is recommended.")) return;
+    if (!claimTranslationLock()) {
+      setToast("Persian translation is active in another Roza tab. Close that tab first.");
+      return;
+    }
     const worker = new Worker(new URL("./translation.worker.ts", import.meta.url), { type: "module" });
     translationWorker.current = worker;
     setTranslationState("loading");
@@ -158,6 +179,7 @@ export default function App() {
       if (event.data.type === "translated" && event.data.id) void saveTranslation(event.data.id, event.data.text ?? "");
       if (event.data.type === "error") {
         setTranslationState("off");
+        releaseTranslationLock();
         localStorage.removeItem("roza-persian-model");
         setPersianModelSaved(false);
         setToast(event.data.message ?? "Translation failed.");
@@ -397,6 +419,15 @@ export default function App() {
   }
 
   const signOut = () => supabase?.auth.signOut();
+  async function resetAppCache() {
+    if (!window.confirm("Reset Roza's app cache and reload? Your saved sessions will stay on this device.")) return;
+    setToast("Resetting app cache…");
+    const registrations = await navigator.serviceWorker?.getRegistrations();
+    await Promise.all(registrations?.map((registration) => registration.unregister()) ?? []);
+    const keys = await caches.keys();
+    await Promise.all(keys.map((key) => caches.delete(key)));
+    window.location.reload();
+  }
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -458,6 +489,7 @@ export default function App() {
               <>
                 <span>{user.email}</span>
                 <button onClick={() => void signOut()}>Sign out</button>
+                <button className="quiet cache-reset" onClick={() => void resetAppCache()}>Reset app cache</button>
               </>
             ) : (
               <form onSubmit={signIn}>
