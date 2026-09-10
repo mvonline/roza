@@ -314,6 +314,8 @@ select { padding: .55rem .65rem; }
 .cloud-controls { display: grid; grid-template-columns: 1fr 1fr; gap: .45rem; }
 .cloud-controls button { grid-column: 1 / -1; width: 100%; padding: .55rem .7rem; font-size: .78rem; }
 .cloud-controls select { min-width: 0; font-size: .78rem; }
+.auto-translate-toggle { grid-column: 1 / -1; display: flex; align-items: center; gap: .45rem; color: var(--text); font-size: .78rem; cursor: pointer; }
+.auto-translate-toggle input { width: 1rem; height: 1rem; padding: 0; accent-color: var(--accent); }
 
 .label-section { display: grid; gap: .5rem; }
 .label-list { display: flex; flex-wrap: wrap; gap: .4rem; }

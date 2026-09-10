@@ -55,6 +55,7 @@ export default function App() {
   const [cloudProvider, setCloudProvider] = useState<CloudProvider>(() => (localStorage.getItem("roza-cloud-provider") as CloudProvider) || "openrouter");
   const [cloudModel, setCloudModel] = useState(() => localStorage.getItem("roza-cloud-model") || "openrouter/free");
   const [cloudTranslating, setCloudTranslating] = useState(false);
+  const [cloudAutoTranslate, setCloudAutoTranslate] = useState(() => localStorage.getItem("roza-cloud-auto-translate") === "true");
   const recognizer = useRef<ReturnType<typeof createRecognizer>>(null);
   const activeRef = useRef<string | null>(null);
   const stopped = useRef(false);
@@ -63,6 +64,7 @@ export default function App() {
   const syncInFlight = useRef<Promise<void> | null>(null);
   const syncRequested = useRef(false);
   const meetingSaveInFlight = useRef<Promise<void>>(Promise.resolve());
+  const cloudTranslationQueue = useRef<Promise<void>>(Promise.resolve());
 
   const loadMeetings = useCallback(async () => {
     const term = normalize(search);
@@ -331,7 +333,10 @@ export default function App() {
     setInterim("");
     await loadSegments(meetingId);
     await loadMeetings();
-    if (saved) requestTranslation(saved, source);
+    if (saved) {
+      if (cloudAutoTranslate && user) queueCloudTranslation(saved, source);
+      else requestTranslation(saved, source);
+    }
     if (user) void runSync(user);
   }
   async function start() {
@@ -506,6 +511,18 @@ export default function App() {
       setCloudTranslating(false);
     }
   }
+  function queueCloudTranslation(segment: TranscriptSegment, source: Language) {
+    const task = cloudTranslationQueue.current.then(async () => {
+      try {
+        const [translatedText] = await translateWithCloud(cloudProvider, cloudModel, [segment.text], source === "sv-SE" ? "Swedish" : "English");
+        if (!translatedText) throw new Error("The provider returned an empty translation.");
+        await saveTranslation(segment.id, translatedText);
+      } catch (error) {
+        setToast(error instanceof Error ? error.message : "Cloud translation failed.");
+      }
+    });
+    cloudTranslationQueue.current = task.catch(() => undefined);
+  }
   async function signIn(event: React.FormEvent) {
     event.preventDefault();
     setSignInState("sending");
@@ -655,11 +672,18 @@ export default function App() {
               <select value={cloudModel} onChange={(event) => { setCloudModel(event.target.value); localStorage.setItem("roza-cloud-model", event.target.value); }}>
                 {cloudModels[cloudProvider].map((model) => <option key={model.value} value={model.value}>{model.label}</option>)}
               </select>
+              <label className="auto-translate-toggle">
+                <input type="checkbox" checked={cloudAutoTranslate} disabled={!user} onChange={(event) => {
+                  setCloudAutoTranslate(event.target.checked);
+                  localStorage.setItem("roza-cloud-auto-translate", String(event.target.checked));
+                }} />
+                Translate each new chunk
+              </label>
               <button type="button" onClick={() => void translateSessionWithCloud()} disabled={cloudTranslating}>
                 {cloudTranslating ? "Translating…" : !user ? "Sign in to use AI" : !active ? "Open a session to translate" : "Translate with AI"}
               </button>
             </div>
-            <small>{!user ? "Sign in first so Roza can securely call your selected provider." : !active ? "Select or create a session first." : "Only when you press Translate with AI is this session sent to the selected provider."}</small>
+            <small>{!user ? "Sign in first so Roza can securely call your selected provider." : cloudAutoTranslate ? "Each finalized new chunk is sent to the selected provider." : !active ? "Select or create a session first." : "Only when you press Translate with AI is this session sent to the selected provider."}</small>
           </section>
         </details>
         <div className="account-panel">
