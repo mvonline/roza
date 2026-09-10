@@ -60,6 +60,7 @@ export default function App() {
   const recognizer = useRef<ReturnType<typeof createRecognizer>>(null);
   const activeRef = useRef<string | null>(null);
   const stopped = useRef(false);
+  const recognitionStarting = useRef(false);
   const translationWorker = useRef<Worker | null>(null);
   const tabId = useRef(crypto.randomUUID());
   const syncInFlight = useRef<Promise<void> | null>(null);
@@ -347,21 +348,60 @@ export default function App() {
     }
     if (user) void runSync(user);
   }
+  function beginRecognition(language: Language) {
+    if (stopped.current || recognitionStarting.current) return;
+    recognitionStarting.current = true;
+    traceSpeech("Creating recognizer");
+    const next = createRecognizer(
+      language,
+      (text) => {
+        if (text) traceSpeech(`Interim text received (${text.length} characters)`);
+        setInterim(text);
+      },
+      (text) => void saveFinal(text),
+      () => {
+        recognitionStarting.current = false;
+        traceSpeech("Recognizer ended");
+        if (!stopped.current) window.setTimeout(() => beginRecognition(language), 400);
+      },
+      (error) => {
+        traceSpeech(`Recognizer error: ${error}`);
+        setMessage(speechErrorMessage(error));
+        if (["not-allowed", "service-not-allowed", "audio-capture", "network"].includes(error)) {
+          stopped.current = true;
+          void saveMeeting({ status: "paused" });
+        }
+      },
+    );
+    if (!next) {
+      recognitionStarting.current = false;
+      return;
+    }
+    recognizer.current = next;
+    try {
+      next.start();
+      traceSpeech("Recognizer start requested");
+      setMessage("");
+    } catch (error) {
+      recognitionStarting.current = false;
+      traceSpeech(`Recognizer start threw: ${error instanceof Error ? error.name : "unknown error"}`);
+      setMessage("Could not start transcription. Try Start once more.");
+    }
+  }
   async function start() {
     traceSpeech("Start pressed");
     if (!active) {
       traceSpeech("Stopped: no active session");
       return;
     }
-    if (!hasSpeechRecognition())
-      {
-        traceSpeech("Stopped: speech recognition API unavailable");
+    if (!hasSpeechRecognition()) {
+      traceSpeech("Stopped: speech recognition API unavailable");
       return setMessage(
         /CriOS/.test(navigator.userAgent)
           ? "Chrome on iPhone/iPad does not provide reliable live transcription. Open Roza in Safari and allow the microphone."
           : "Live transcription is unavailable in this browser. Try Safari on iPhone/iPad, or Chrome on Android/desktop.",
       );
-      }
+    }
     try {
       traceSpeech("Requesting microphone permission");
       await requestMicrophoneAccess();
@@ -371,46 +411,13 @@ export default function App() {
       return setMessage(permissionSettingsHint());
     }
     stopped.current = false;
-    await saveMeeting({
-      status: "recording",
-      startedAt: active.startedAt || Date.now(),
-    });
-    traceSpeech("Session marked as recording; creating recognizer");
-    recognizer.current = createRecognizer(
-      active.language,
-      (text) => {
-        if (text) traceSpeech(`Interim text received (${text.length} characters)`);
-        setInterim(text);
-      },
-      (text) => void saveFinal(text),
-      () => {
-        traceSpeech("Recognizer ended");
-        if (!stopped.current)
-          setTimeout(() => {
-            void db.meetings.get(activeRef.current || "").then((m) => {
-              if (m?.status === "recording") {
-                traceSpeech("Restarting recognizer");
-                void start();
-              }
-            });
-          }, 400);
-      },
-      (error) => {
-        traceSpeech(`Recognizer error: ${error}`);
-        setMessage(speechErrorMessage(error));
-      },
-    );
-    try {
-      recognizer.current?.start();
-      traceSpeech("Recognizer start requested");
-      setMessage("");
-    } catch (error) {
-      traceSpeech(`Recognizer start threw: ${error instanceof Error ? error.name : "unknown error"}`);
-      setMessage("Roza is already listening.");
-    }
+    await saveMeeting({ status: "recording", startedAt: active.startedAt || Date.now() });
+    traceSpeech("Session marked as recording");
+    beginRecognition(active.language);
   }
   async function stop(status: "paused" | "complete") {
     stopped.current = true;
+    recognitionStarting.current = false;
     recognizer.current?.stop();
     recognizer.current = null;
     setInterim("");
