@@ -51,6 +51,7 @@ button, select {
 .caption-card .eyebrow { color: #e6dcff; }
 .caption { font-size: clamp(1.5rem, 5vw, 2.75rem); line-height: 1.2; }
 .quiet { background: transparent; border: 1px solid #cfc7e1; color: inherit; }
+.danger { background: #b42318; }
 .message { color: #b34040; }
 .transcript { margin-top: 1rem; }
 .transcript { counter-reset: row; }
