@@ -56,7 +56,7 @@ export async function rebuildMeetingSearch(meeting: Meeting) {
 
 export async function queueSync(entity: SyncOperation["entity"], entityId: string, action: SyncOperation["action"]) {
   await db.syncOperations.put({
-    id: crypto.randomUUID(),
+    id: `${entity}:${entityId}`,
     entity,
     entityId,
     action,

@@ -60,6 +60,9 @@ export default function App() {
   const stopped = useRef(false);
   const translationWorker = useRef<Worker | null>(null);
   const tabId = useRef(crypto.randomUUID());
+  const syncInFlight = useRef<Promise<void> | null>(null);
+  const syncRequested = useRef(false);
+  const meetingSaveInFlight = useRef<Promise<void>>(Promise.resolve());
 
   const loadMeetings = useCallback(async () => {
     const term = normalize(search);
@@ -96,11 +99,17 @@ export default function App() {
     );
   }, []);
   const runSync = useCallback(
-    async (account: User) => {
+    (account: User) => {
+      syncRequested.current = true;
+      if (syncInFlight.current) return syncInFlight.current;
+      const task = (async () => {
       try {
-        setSyncState("Syncing");
-        setToast("Syncing your sessions…");
-        await sync(account);
+        do {
+          syncRequested.current = false;
+          setSyncState("Syncing");
+          setToast("Syncing your sessions…");
+          await sync(account);
+        } while (syncRequested.current);
         setSyncState("Synced");
         setToast("Sync complete");
         await loadMeetings();
@@ -108,7 +117,12 @@ export default function App() {
       } catch {
         setSyncState("Needs attention");
         setToast("Sync failed. Your changes remain saved on this device.");
+      } finally {
+        syncInFlight.current = null;
       }
+      })();
+      syncInFlight.current = task;
+      return task;
     },
     [loadMeetings, loadSegments],
   );
@@ -249,26 +263,23 @@ export default function App() {
     if (user) void runSync(user);
   }
   async function saveMeeting(changes: Partial<Meeting>) {
-    if (!active) return;
-    const next = { ...active, ...changes, updatedAt: Date.now() };
-    setMeetings((current) =>
-      current
-        .map((meeting) => (meeting.id === next.id ? next : meeting))
-        .sort((a, b) => b.createdAt - a.createdAt),
-    );
-    await db.transaction(
-      "rw",
-      db.meetings,
-      db.searchEntries,
-      db.syncOperations,
-      async () => {
+    const meetingId = activeRef.current;
+    if (!meetingId) return;
+    const task = meetingSaveInFlight.current.then(async () => {
+      const current = await db.meetings.get(meetingId);
+      if (!current || current.deletedAt) return;
+      const next = { ...current, ...changes, updatedAt: Date.now() };
+      setMeetings((items) => items.map((meeting) => (meeting.id === next.id ? next : meeting)).sort((a, b) => b.createdAt - a.createdAt));
+      await db.transaction("rw", db.meetings, db.searchEntries, db.syncOperations, async () => {
         await db.meetings.put(next);
         await rebuildMeetingSearch(next);
         if (user) await queueSync("meeting", next.id, "upsert");
-      },
-    );
-    await loadMeetings();
-    if (user) void runSync(user);
+      });
+      await loadMeetings();
+      if (user) void runSync(user);
+    });
+    meetingSaveInFlight.current = task.catch(() => undefined);
+    await task;
   }
   async function saveFinal(text: string) {
     const meetingId = activeRef.current;
