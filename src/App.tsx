@@ -75,16 +75,13 @@ export default function App() {
   const cloudTranslationQueue = useRef<Promise<void>>(Promise.resolve());
   const pausingRecordings = useRef<Promise<void> | null>(null);
   const pauseOpenRecordingsRef = useRef<(reason: string) => Promise<void>>(async () => undefined);
-  const diagnosticsEnabled = useRef(showDiagnostics);
 
   const traceSpeech = useCallback((event: string) => {
-    if (!diagnosticsEnabled.current) return;
     const entry = `${new Date().toLocaleTimeString()} — ${event}`;
     console.info("[Roza speech]", entry);
     setSpeechLog((items) => [entry, ...items].slice(0, 16));
   }, []);
   const traceTranslation = useCallback((event: string) => {
-    if (!diagnosticsEnabled.current) return;
     const entry = `${new Date().toLocaleTimeString()} — ${event}`;
     console.info("[Roza translation]", entry);
     setTranslationLog((items) => [entry, ...items].slice(0, 16));
@@ -189,9 +186,6 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("roza-theme", theme);
   }, [theme]);
-  useEffect(() => {
-    diagnosticsEnabled.current = showDiagnostics;
-  }, [showDiagnostics]);
   useEffect(() => () => {
     translationWorker.current?.terminate();
     const lock = localStorage.getItem(translationLockKey);
@@ -450,7 +444,7 @@ export default function App() {
       (error) => {
         traceSpeech(`Recognizer error: ${error}`);
         setMessage(speechErrorMessage(error));
-        if (["not-allowed", "service-not-allowed", "audio-capture"].includes(error)) {
+        if (["not-allowed", "service-not-allowed", "audio-capture", "network"].includes(error)) {
           stopped.current = true;
           void saveMeeting({ status: "paused" });
         }
