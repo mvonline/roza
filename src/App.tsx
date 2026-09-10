@@ -44,7 +44,7 @@ export default function App() {
     if (!term)
       return setMeetings(
         await db.meetings
-          .orderBy("updatedAt")
+          .orderBy("createdAt")
           .reverse()
           .filter((m) => !m.deletedAt)
           .limit(page * pageSize)
@@ -56,7 +56,7 @@ export default function App() {
     const found = (
       await db.meetings.bulkGet([...new Set(hits.map((hit) => hit.meetingId))])
     ).filter((m): m is Meeting => Boolean(m && !m.deletedAt));
-    setMeetings(found.sort((a, b) => b.updatedAt - a.updatedAt));
+    setMeetings(found.sort((a, b) => b.createdAt - a.createdAt));
   }, [page, search]);
   const loadSegments = useCallback(async (id: string | null) => {
     if (!id) return setSegments([]);
@@ -150,7 +150,7 @@ export default function App() {
     setMeetings((current) =>
       current
         .map((meeting) => (meeting.id === next.id ? next : meeting))
-        .sort((a, b) => b.updatedAt - a.updatedAt),
+        .sort((a, b) => b.createdAt - a.createdAt),
     );
     await db.transaction(
       "rw",
@@ -352,7 +352,7 @@ export default function App() {
             >
               <strong>{m.title}</strong>
               <span>
-                {clock(m.updatedAt)} ·{" "}
+                {clock(m.createdAt)} ·{" "}
                 {m.language === "sv-SE" ? "Svenska" : "English"}
               </span>
               {m.labels.length > 0 && <small>{m.labels.join(" · ")}</small>}

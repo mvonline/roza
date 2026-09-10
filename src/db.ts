@@ -17,6 +17,13 @@ class RozaDatabase extends Dexie {
       syncOperations: "id, createdAt",
       settings: "key"
     });
+    this.version(2).stores({
+      meetings: "id, createdAt, updatedAt, userId, status, *labels",
+      segments: "id, meetingId, [meetingId+sequence], updatedAt",
+      searchEntries: "id, meetingId, segmentId, source, normalizedText",
+      syncOperations: "id, createdAt",
+      settings: "key"
+    });
   }
 }
 
