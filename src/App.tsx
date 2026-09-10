@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { db, normalize, queueSync, rebuildMeetingSearch } from "./db";
-import { createRecognizer, hasSpeechRecognition, speechErrorMessage } from "./speech";
+import { createRecognizer, hasSpeechRecognition, permissionSettingsHint, requestMicrophoneAccess, speechErrorMessage } from "./speech";
 import { currentUser, sendSignInLink, supabase, sync, translateWithCloud, verifySignInCode, type CloudProvider } from "./supabase";
 import type { Language, Meeting, TranscriptSegment } from "./types";
 
@@ -39,6 +39,7 @@ export default function App() {
   const [language, setLanguage] = useState<Language>("sv-SE");
   const [interim, setInterim] = useState("");
   const [message, setMessage] = useState("");
+  const [speechLog, setSpeechLog] = useState<string[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
   const [signInCode, setSignInCode] = useState("");
@@ -65,6 +66,12 @@ export default function App() {
   const syncRequested = useRef(false);
   const meetingSaveInFlight = useRef<Promise<void>>(Promise.resolve());
   const cloudTranslationQueue = useRef<Promise<void>>(Promise.resolve());
+
+  const traceSpeech = useCallback((event: string) => {
+    const entry = `${new Date().toLocaleTimeString()} — ${event}`;
+    console.info("[Roza speech]", entry);
+    setSpeechLog((items) => [entry, ...items].slice(0, 16));
+  }, []);
 
   const loadMeetings = useCallback(async () => {
     const term = normalize(search);
@@ -286,6 +293,7 @@ export default function App() {
   async function saveFinal(text: string) {
     const meetingId = activeRef.current;
     if (!meetingId || !text) return;
+    traceSpeech(`Final text received (${text.length} characters)`);
     let saved: TranscriptSegment | undefined;
     let source: Language = "sv-SE";
     await db.transaction(
@@ -339,48 +347,67 @@ export default function App() {
     }
     if (user) void runSync(user);
   }
-  function beginRecognition(language: Language) {
-    const next = createRecognizer(
-      language,
-      setInterim,
-      (text) => void saveFinal(text),
-      () => {
-        if (stopped.current) return;
-        window.setTimeout(() => {
-          if (!stopped.current) beginRecognition(language);
-        }, 400);
-      },
-      (error) => {
-        setMessage(speechErrorMessage(error));
-        if (["not-allowed", "service-not-allowed", "audio-capture"].includes(error)) {
-          stopped.current = true;
-          void saveMeeting({ status: "paused" });
-        }
-      },
-    );
-    if (!next) return;
-    recognizer.current = next;
-    try {
-      next.start();
-      setMessage("");
-    } catch {
-      setMessage("Roza is already listening.");
-    }
-  }
   async function start() {
-    if (!active) return;
+    traceSpeech("Start pressed");
+    if (!active) {
+      traceSpeech("Stopped: no active session");
+      return;
+    }
     if (!hasSpeechRecognition())
+      {
+        traceSpeech("Stopped: speech recognition API unavailable");
       return setMessage(
         /CriOS/.test(navigator.userAgent)
           ? "Chrome on iPhone/iPad does not provide reliable live transcription. Open Roza in Safari and allow the microphone."
           : "Live transcription is unavailable in this browser. Try Safari on iPhone/iPad, or Chrome on Android/desktop.",
       );
+      }
+    try {
+      traceSpeech("Requesting microphone permission");
+      await requestMicrophoneAccess();
+      traceSpeech("Microphone permission granted");
+    } catch (error) {
+      traceSpeech(`Microphone permission failed: ${error instanceof Error ? error.name : "unknown error"}`);
+      return setMessage(permissionSettingsHint());
+    }
     stopped.current = false;
-    beginRecognition(active.language);
     await saveMeeting({
       status: "recording",
       startedAt: active.startedAt || Date.now(),
     });
+    traceSpeech("Session marked as recording; creating recognizer");
+    recognizer.current = createRecognizer(
+      active.language,
+      (text) => {
+        if (text) traceSpeech(`Interim text received (${text.length} characters)`);
+        setInterim(text);
+      },
+      (text) => void saveFinal(text),
+      () => {
+        traceSpeech("Recognizer ended");
+        if (!stopped.current)
+          setTimeout(() => {
+            void db.meetings.get(activeRef.current || "").then((m) => {
+              if (m?.status === "recording") {
+                traceSpeech("Restarting recognizer");
+                void start();
+              }
+            });
+          }, 400);
+      },
+      (error) => {
+        traceSpeech(`Recognizer error: ${error}`);
+        setMessage(speechErrorMessage(error));
+      },
+    );
+    try {
+      recognizer.current?.start();
+      traceSpeech("Recognizer start requested");
+      setMessage("");
+    } catch (error) {
+      traceSpeech(`Recognizer start threw: ${error instanceof Error ? error.name : "unknown error"}`);
+      setMessage("Roza is already listening.");
+    }
   }
   async function stop(status: "paused" | "complete") {
     stopped.current = true;
@@ -805,6 +832,11 @@ export default function App() {
                 {interim || "Press Start to show live subtitles."}
               </div>
             </div>
+            <details className="speech-debug">
+              <summary>Transcription diagnostic</summary>
+              <p>This log stays only in this browser until the page is refreshed.</p>
+              {speechLog.length === 0 ? <p>No speech activity yet.</p> : <ol>{speechLog.map((entry, index) => <li key={`${entry}-${index}`}>{entry}</li>)}</ol>}
+            </details>
             <div className="controls">
               <div className="controls-primary">
                 {active.status === "recording" ? (

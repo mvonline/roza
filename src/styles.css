@@ -522,6 +522,17 @@ select { padding: .55rem .65rem; }
   line-height: 1.25;
   font-weight: 550;
 }
+.speech-debug {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: .78rem;
+  padding: .55rem .75rem;
+}
+.speech-debug summary { color: var(--text); cursor: pointer; font-weight: 700; }
+.speech-debug p { margin: .5rem 0 0; }
+.speech-debug ol { margin: .5rem 0 0; padding-left: 1.2rem; }
+.speech-debug li + li { margin-top: .25rem; }
 
 .controls {
   display: flex;
