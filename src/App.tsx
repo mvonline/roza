@@ -40,6 +40,7 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [translationState, setTranslationState] = useState<"off" | "loading" | "ready">("off");
   const [translationProgress, setTranslationProgress] = useState(0);
+  const [persianModelSaved, setPersianModelSaved] = useState(() => localStorage.getItem("roza-persian-model") === "saved");
   const recognizer = useRef<ReturnType<typeof createRecognizer>>(null);
   const activeRef = useRef<string | null>(null);
   const stopped = useRef(false);
@@ -148,16 +149,23 @@ export default function App() {
   }
   async function enableTranslation() {
     if (translationState !== "off") return;
-    if (!window.confirm("Download the Persian translation model from Hugging Face? This one-time download is large and works best on Wi-Fi.")) return;
+    if (!persianModelSaved && !window.confirm("Download the offline Persian model? This one-time download is large, so Wi-Fi is recommended.")) return;
     const worker = new Worker(new URL("./translation.worker.ts", import.meta.url), { type: "module" });
     translationWorker.current = worker;
     setTranslationState("loading");
     worker.onmessage = (event: MessageEvent<{ type: string; id?: string; text?: string; progress?: number; message?: string }>) => {
       if (event.data.type === "progress") setTranslationProgress(Math.round(event.data.progress ?? 0));
       if (event.data.type === "translated" && event.data.id) void saveTranslation(event.data.id, event.data.text ?? "");
-      if (event.data.type === "error") { setTranslationState("off"); setToast(event.data.message ?? "Translation failed."); }
+      if (event.data.type === "error") {
+        setTranslationState("off");
+        localStorage.removeItem("roza-persian-model");
+        setPersianModelSaved(false);
+        setToast(event.data.message ?? "Translation failed.");
+      }
       if (event.data.type === "ready") {
         setTranslationState("ready");
+        localStorage.setItem("roza-persian-model", "saved");
+        setPersianModelSaved(true);
         setToast("Persian translation is ready");
         if (activeRef.current) {
           void Promise.all([
@@ -407,7 +415,17 @@ export default function App() {
             setPage(1);
           }}
           placeholder="Search lessons"
-        />{" "}
+        />
+        <section className={`translation-panel ${persianModelSaved ? "translation-ready" : ""}`}>
+          <div>
+            <p className="eyebrow">Offline translation</p>
+            <strong>Persian</strong>
+          </div>
+          <button type="button" onClick={() => void enableTranslation()} disabled={translationState !== "off"}>
+            {translationState === "loading" ? `Downloading ${translationProgress}%` : persianModelSaved ? "✓ Persian model ready" : "Download Persian model"}
+          </button>
+          <small>{persianModelSaved ? "Saved on this device" : "Optional · no paid API"}</small>
+        </section>
         <section className="label-section">
           <p className="eyebrow">Labels</p>
           <div className="label-list">
@@ -503,9 +521,6 @@ export default function App() {
                 }
                 placeholder="Labels, separated by commas"
               />
-              <button type="button" onClick={() => void enableTranslation()} disabled={translationState !== "off"}>
-                {translationState === "loading" ? `Downloading Persian ${translationProgress}%` : translationState === "ready" ? "Persian on" : "Persian translation"}
-              </button>
             </div>
             {active.labels.length > 0 && <div className="applied-labels">{active.labels.map((label) => <span key={label}>{label}</span>)}</div>}
             <div className="caption-card">

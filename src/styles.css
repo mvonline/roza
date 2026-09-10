@@ -39,6 +39,16 @@ button, select {
 .brand-row, .topbar, .controls, .meeting-options { display: flex; align-items: center; gap: .75rem; justify-content: space-between; }
 .search, .meeting-options input, .account-panel input, .title-input { width: 100%; border: 1px solid #cfc7e1; border-radius: .6rem; background: transparent; color: inherit; padding: .65rem; }
 .meeting-list { display: grid; align-content: start; gap: .5rem; height: clamp(14rem, 45vh, 34rem); overflow-y: auto; overscroll-behavior: contain; padding: .1rem .35rem .2rem .1rem; }
+.translation-panel { display: grid; grid-template-columns: 1fr auto; gap: .35rem .75rem; padding: .8rem; border: 1px solid #dcd5ec; border-radius: .9rem; background: color-mix(in srgb, Canvas 94%, #e4dcff); }
+.translation-panel strong { color: #302542; font-size: .95rem; }
+.translation-panel button { align-self: center; padding: .5rem .65rem; font-size: .75rem; }
+.translation-panel small { grid-column: 1 / -1; color: #746b85; font-size: .72rem; }
+.translation-panel.translation-ready { border-color: #77b99a; background: #edf9f1; }
+.translation-panel.translation-ready button { background: #19764b; }
+:root[data-theme="dark"] .translation-panel { background: #211c2d; border-color: #342d44; }
+:root[data-theme="dark"] .translation-panel strong { color: #f4efff; }
+:root[data-theme="dark"] .translation-panel small { color: #b9b0c9; }
+:root[data-theme="dark"] .translation-panel.translation-ready { background: #183929; border-color: #438868; }
 .label-section { display: grid; gap: .4rem; }
 .label-list { display: flex; flex-wrap: wrap; gap: .35rem; }
 .label-list button { background: transparent; border: 1px solid #cfc7e1; color: inherit; border-radius: 999px; padding: .3rem .55rem; font-size: .78rem; }
