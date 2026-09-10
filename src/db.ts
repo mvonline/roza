@@ -24,6 +24,19 @@ class RozaDatabase extends Dexie {
       syncOperations: "id, createdAt",
       settings: "key"
     });
+    // version 3 briefly shipped an `audioChunks` table (16ca6c8) that was reverted
+    // (6a45daa) before this compatibility block was added. Any browser that opened the
+    // app during that window physically upgraded its IndexedDB to version 3 on disk;
+    // IndexedDB refuses to open a database whose on-disk version exceeds the highest
+    // version registered here, so this no-op version(3) (same schema as version 2) lets
+    // those browsers reopen their existing data instead of being permanently locked out.
+    this.version(3).stores({
+      meetings: "id, createdAt, updatedAt, userId, status, *labels",
+      segments: "id, meetingId, [meetingId+sequence], updatedAt",
+      searchEntries: "id, meetingId, segmentId, source, normalizedText",
+      syncOperations: "id, createdAt",
+      settings: "key"
+    });
   }
 }
 

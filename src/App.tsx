@@ -75,13 +75,21 @@ export default function App() {
   const cloudTranslationQueue = useRef<Promise<void>>(Promise.resolve());
   const pausingRecordings = useRef<Promise<void> | null>(null);
   const pauseOpenRecordingsRef = useRef<(reason: string) => Promise<void>>(async () => undefined);
+  const restartAttempts = useRef(0);
+  const maxRestartAttempts = 8;
 
+  const diagnosticsEnabledRef = useRef(showDiagnostics);
+  useEffect(() => {
+    diagnosticsEnabledRef.current = showDiagnostics;
+  }, [showDiagnostics]);
   const traceSpeech = useCallback((event: string) => {
+    if (!diagnosticsEnabledRef.current) return;
     const entry = `${new Date().toLocaleTimeString()} — ${event}`;
     console.info("[Roza speech]", entry);
     setSpeechLog((items) => [entry, ...items].slice(0, 16));
   }, []);
   const traceTranslation = useCallback((event: string) => {
+    if (!diagnosticsEnabledRef.current) return;
     const entry = `${new Date().toLocaleTimeString()} — ${event}`;
     console.info("[Roza translation]", entry);
     setTranslationLog((items) => [entry, ...items].slice(0, 16));
@@ -174,6 +182,8 @@ export default function App() {
     pausingRecordings.current = task.catch(() => undefined);
     try {
       await task;
+    } catch {
+      setToast("Could not pause the active recording. Your changes remain saved on this device.");
     } finally {
       pausingRecordings.current = null;
     }
@@ -432,14 +442,30 @@ export default function App() {
     const next = createRecognizer(
       language,
       (text) => {
-        if (text) traceSpeech(`Interim text received (${text.length} characters)`);
+        if (text) {
+          traceSpeech(`Interim text received (${text.length} characters)`);
+          restartAttempts.current = 0;
+        }
         setInterim(text);
       },
-      (text) => void saveFinal(text),
+      (text) => {
+        restartAttempts.current = 0;
+        void saveFinal(text);
+      },
       () => {
         recognitionStarting.current = false;
         traceSpeech("Recognizer ended");
-        if (!stopped.current) window.setTimeout(() => beginRecognition(language), 400);
+        if (stopped.current) return;
+        if (restartAttempts.current >= maxRestartAttempts) {
+          traceSpeech(`Giving up after ${restartAttempts.current} restart attempts`);
+          stopped.current = true;
+          setMessage("Live transcription kept stopping unexpectedly. Press Start to try again.");
+          void saveMeeting({ status: "paused" });
+          return;
+        }
+        const delay = Math.min(400 * 2 ** restartAttempts.current, 8000);
+        restartAttempts.current += 1;
+        window.setTimeout(() => beginRecognition(language), delay);
       },
       (error) => {
         traceSpeech(`Recognizer error: ${error}`);
@@ -489,6 +515,7 @@ export default function App() {
       return setMessage(permissionSettingsHint());
     }
     stopped.current = false;
+    restartAttempts.current = 0;
     await saveMeeting({ status: "recording", startedAt: active.startedAt || Date.now() });
     traceSpeech("Session marked as recording");
     beginRecognition(active.language);
@@ -606,27 +633,32 @@ export default function App() {
     if (!window.confirm(`Send ${pending.length} transcript parts to ${cloudProvider} for Persian translation? This uses that provider's account and privacy policy.`)) return;
     traceTranslation(`Manual translation started for ${pending.length} rows with ${cloudProvider}/${cloudModel}`);
     setCloudTranslating(true);
+    let translatedCount = 0;
     try {
-      const translations: string[] = [];
       for (let index = 0; index < pending.length; index += 20) {
         const batch = pending.slice(index, index + 20);
-        translations.push(...await translateWithCloud(cloudProvider, cloudModel, batch.map((segment) => segment.text), active.language === "sv-SE" ? "Swedish" : "English"));
+        const translations = await translateWithCloud(cloudProvider, cloudModel, batch.map((segment) => segment.text), active.language === "sv-SE" ? "Swedish" : "English");
+        if (translations.length !== batch.length) throw new Error("Some transcript parts were not translated.");
+        // Persist each batch as soon as it succeeds, so a later batch's failure
+        // doesn't discard translations already paid for and received.
+        await db.transaction("rw", db.segments, db.syncOperations, async () => {
+          for (const [offset, segment] of batch.entries()) {
+            await db.segments.put({ ...segment, translatedText: translations[offset], updatedAt: Date.now() });
+            await queueSync("segment", segment.id, "upsert");
+          }
+        });
+        translatedCount += batch.length;
       }
-      if (translations.length !== pending.length) throw new Error("Some transcript parts were not translated.");
-      await db.transaction("rw", db.segments, db.syncOperations, async () => {
-        for (const [index, segment] of pending.entries()) {
-          await db.segments.put({ ...segment, translatedText: translations[index], updatedAt: Date.now() });
-          await queueSync("segment", segment.id, "upsert");
-        }
-      });
       await loadSegments(active.id);
       void runSync(user);
-      traceTranslation(`Manual translation saved for ${pending.length} rows`);
+      traceTranslation(`Manual translation saved for ${translatedCount} rows`);
       setToast("Cloud translation complete");
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Cloud translation failed.";
-      traceTranslation(`Manual translation failed — ${detail}`);
-      setToast(detail);
+      traceTranslation(`Manual translation failed after ${translatedCount} of ${pending.length} rows — ${detail}`);
+      await loadSegments(active.id);
+      void runSync(user);
+      setToast(translatedCount ? `${detail} ${translatedCount} row(s) were saved before the failure; retry to finish the rest.` : detail);
     } finally {
       setCloudTranslating(false);
     }
@@ -676,7 +708,11 @@ export default function App() {
   async function retryCloudTranslation(segment: TranscriptSegment) {
     traceTranslation(`Manual retry requested for row ${segment.sequence}`);
     const meeting = await db.meetings.get(segment.meetingId);
-    queueCloudTranslation(segment, meeting?.language ?? "sv-SE");
+    if (!meeting) {
+      setSegmentTranslationStatus((current) => ({ ...current, [segment.id]: { message: "Can't retry: the session this row belongs to is missing." } }));
+      return;
+    }
+    queueCloudTranslation(segment, meeting.language);
   }
   async function signIn(event: React.FormEvent) {
     event.preventDefault();

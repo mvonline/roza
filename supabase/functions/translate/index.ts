@@ -21,13 +21,44 @@ function response(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: corsHeaders });
 }
 
+// Finds every balanced top-level [...] substring in `text` (respecting quoted
+// strings, so brackets inside translated text don't break the count), and
+// returns each as a candidate. A single greedy regex would instead span from
+// the first stray '[' anywhere in the reply through the last ']', which can
+// swallow an unrelated bracketed aside and corrupt an otherwise-valid array.
+function findBracketedArrays(text: string) {
+  const candidates: string[] = [];
+  for (let start = 0; start < text.length; start += 1) {
+    if (text[start] !== "[") continue;
+    let depth = 0;
+    let inString: '"' | "'" | null = null;
+    for (let end = start; end < text.length; end += 1) {
+      const char = text[end];
+      if (inString) {
+        if (char === "\\") end += 1;
+        else if (char === inString) inString = null;
+        continue;
+      }
+      if (char === '"' || char === "'") inString = char;
+      else if (char === "[") depth += 1;
+      else if (char === "]") {
+        depth -= 1;
+        if (depth === 0) {
+          candidates.push(text.slice(start, end + 1));
+          break;
+        }
+      }
+    }
+  }
+  return candidates;
+}
+
 function extractTranslations(text: string, expectedLength: number) {
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-  const match = cleaned.match(/\[[\s\S]*\]/);
-  if (match) {
+  for (const candidate of findBracketedArrays(cleaned)) {
     try {
-      const translations = JSON.parse(match[0]);
-      if (Array.isArray(translations) && translations.every((item) => typeof item === "string")) return translations;
+      const translations = JSON.parse(candidate);
+      if (Array.isArray(translations) && translations.length === expectedLength && translations.every((item) => typeof item === "string")) return translations;
     } catch {}
   }
   if (expectedLength === 1 && cleaned) return [cleaned.replace(/^(?:translation|persian translation|ترجمه)\s*[:：-]\s*/i, "").trim()];
