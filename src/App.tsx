@@ -64,6 +64,7 @@ export default function App() {
   const [segmentTranslationStatus, setSegmentTranslationStatus] = useState<Record<string, SegmentTranslationStatus>>({});
   const [showDiagnostics, setShowDiagnostics] = useState(() => localStorage.getItem("roza-show-diagnostics") === "true");
   const [saveAudioLocally, setSaveAudioLocally] = useState(() => localStorage.getItem("roza-save-audio") === "true");
+  const [audioRecordingActive, setAudioRecordingActive] = useState(false);
   const [listeningSegmentId, setListeningSegmentId] = useState<string | null>(null);
   const recognizer = useRef<ReturnType<typeof createRecognizer>>(null);
   const activeRef = useRef<string | null>(null);
@@ -277,6 +278,7 @@ export default function App() {
     audioRecorder.current = null;
     audioStream.current?.getTracks().forEach((track) => track.stop());
     audioStream.current = null;
+    setAudioRecordingActive(false);
   }
   function startLocalAudio(meetingId: string, stream: MediaStream) {
     if (!window.MediaRecorder) {
@@ -285,12 +287,20 @@ export default function App() {
       return;
     }
     audioStream.current = stream;
+    setAudioRecordingActive(true);
     const mimeType = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"].find((type) => MediaRecorder.isTypeSupported(type)) || "";
     const recordChunk = () => {
       if (audioStream.current !== stream || !stream.active) return;
       const startedAt = Date.now();
       const parts: BlobPart[] = [];
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      let recorder: MediaRecorder;
+      try {
+        recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      } catch {
+        stopLocalAudio();
+        setToast("Audio recorder could not start in this browser.");
+        return;
+      }
       audioRecorder.current = recorder;
       recorder.ondataavailable = (event) => {
         if (event.data.size) parts.push(event.data);
@@ -324,6 +334,16 @@ export default function App() {
     } catch {
       setListeningSegmentId(null);
       setToast("Audio playback could not start.");
+    }
+  }
+  async function startAudioForCurrentSession() {
+    if (!active || active.status !== "recording" || audioStream.current) return;
+    try {
+      const stream = await requestMicrophoneAccess();
+      startLocalAudio(active.id, stream);
+      setToast("Local audio recording started");
+    } catch {
+      setToast(permissionSettingsHint());
     }
   }
   function claimTranslationLock() {
@@ -887,12 +907,15 @@ export default function App() {
           <section className="audio-setting">
             <label>
               <input type="checkbox" checked={saveAudioLocally} onChange={(event) => {
-                setSaveAudioLocally(event.target.checked);
-                localStorage.setItem("roza-save-audio", String(event.target.checked));
+                const enabled = event.target.checked;
+                setSaveAudioLocally(enabled);
+                localStorage.setItem("roza-save-audio", String(enabled));
+                if (enabled) void startAudioForCurrentSession();
+                else stopLocalAudio();
               }} />
               Save recording audio on this device
             </label>
-            <small>Audio stays only in this browser. It starts with the next Start and uses device storage.</small>
+            <small>{audioRecordingActive ? "Audio is being saved locally for this session." : "Audio stays only in this browser and uses device storage."}</small>
           </section>
           {translationEngine === "local" && <section className={`translation-panel ${persianModelSaved ? "translation-ready" : ""}`}>
             <div>
