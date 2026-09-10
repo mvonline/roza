@@ -9,14 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "latest",
+    "@huggingface/transformers": "^3.8.1",
     "@supabase/supabase-js": "latest",
-    "@huggingface/transformers": "latest",
+    "@vitejs/plugin-react": "latest",
     "dexie": "latest",
-    "vite": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "vite": "latest"
   },
   "devDependencies": {
     "@types/react": "latest",
