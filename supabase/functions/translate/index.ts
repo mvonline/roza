@@ -53,11 +53,9 @@ async function requestProvider(provider: Provider, model: string, prompt: string
   }
   const key = Deno.env.get("OPENROUTER_API_KEY");
   if (!key) throw new Error("OpenRouter is not enabled by the owner.");
-  const result = await fetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": "https://roza.vafa.one", "X-Title": "Roza" }, body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }], temperature: 0, response_format: { type: "json_object" } }) });
+  const result = await fetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": "https://roza.vafa.one", "X-Title": "Roza" }, body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }], temperature: 0 }) });
   if (!result.ok) throw new Error(`OpenRouter request failed (${result.status}).`);
-  const content = (await result.json()).choices?.[0]?.message?.content ?? "";
-  const parsed = JSON.parse(content);
-  return JSON.stringify(parsed.translations ?? parsed);
+  return (await result.json()).choices?.[0]?.message?.content ?? "";
 }
 
 Deno.serve(async (request) => {

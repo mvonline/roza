@@ -33,7 +33,11 @@ export async function translateWithCloud(provider: CloudProvider, model: string,
   const { data, error } = await supabase.functions.invoke("translate", {
     body: { provider, model, texts, sourceLanguage }
   });
-  if (error) throw error;
+  if (error) {
+    const context = (error as Error & { context?: Response }).context;
+    const detail = context ? await context.json().catch(() => null) as { error?: string } | null : null;
+    throw new Error(detail?.error || error.message);
+  }
   if (!Array.isArray(data?.translations) || data.translations.some((text: unknown) => typeof text !== "string")) {
     throw new Error("The translation service returned an invalid response.");
   }
