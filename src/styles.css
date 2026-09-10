@@ -632,6 +632,19 @@ textarea:hover { background: var(--bg-sunken); }
   color: var(--accent-strong);
   line-height: 1.7;
 }
+.translation-status {
+  grid-column: 2 / -1;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: .8rem;
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+}
+.translation-status button {
+  padding: .25rem .5rem;
+  font-size: .75rem;
+}
 
 /* ---------------------------------------------------------------------- */
 /* Empty state / welcome                                                  */

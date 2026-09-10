@@ -6,6 +6,7 @@ import { currentUser, sendSignInLink, supabase, sync, translateWithCloud, verify
 import type { Language, Meeting, TranscriptSegment } from "./types";
 
 type Theme = "system" | "light" | "dark";
+type SegmentTranslationStatus = { message: string; retryable?: boolean };
 const pageSize = 50;
 const translationLockKey = "roza-persian-translation-lock";
 const cloudModels: Record<CloudProvider, { value: string; label: string }[]> = {
@@ -56,7 +57,8 @@ export default function App() {
   const [cloudProvider, setCloudProvider] = useState<CloudProvider>(() => (localStorage.getItem("roza-cloud-provider") as CloudProvider) || "openrouter");
   const [cloudModel, setCloudModel] = useState(() => localStorage.getItem("roza-cloud-model") || "openrouter/free");
   const [cloudTranslating, setCloudTranslating] = useState(false);
-  const [cloudAutoTranslate, setCloudAutoTranslate] = useState(() => localStorage.getItem("roza-cloud-auto-translate") === "true");
+  const [cloudAutoTranslate, setCloudAutoTranslate] = useState(() => localStorage.getItem("roza-cloud-auto-translate") !== "false");
+  const [segmentTranslationStatus, setSegmentTranslationStatus] = useState<Record<string, SegmentTranslationStatus>>({});
   const recognizer = useRef<ReturnType<typeof createRecognizer>>(null);
   const activeRef = useRef<string | null>(null);
   const stopped = useRef(false);
@@ -592,16 +594,40 @@ export default function App() {
     }
   }
   function queueCloudTranslation(segment: TranscriptSegment, source: Language) {
+    setSegmentTranslationStatus((current) => ({ ...current, [segment.id]: { message: "Queued for Persian translation…" } }));
     const task = cloudTranslationQueue.current.then(async () => {
-      try {
-        const [translatedText] = await translateWithCloud(cloudProvider, cloudModel, [segment.text], source === "sv-SE" ? "Swedish" : "English");
-        if (!translatedText) throw new Error("The provider returned an empty translation.");
-        await saveTranslation(segment.id, translatedText);
-      } catch (error) {
-        setToast(error instanceof Error ? error.message : "Cloud translation failed.");
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          setSegmentTranslationStatus((current) => ({
+            ...current,
+            [segment.id]: { message: attempt === 0 ? "Translating to Persian…" : "Retrying translation…" },
+          }));
+          const [translatedText] = await Promise.race([
+            translateWithCloud(cloudProvider, cloudModel, [segment.text], source === "sv-SE" ? "Swedish" : "English"),
+            new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("Translation timed out.")), 45_000)),
+          ]);
+          if (!translatedText) throw new Error("The provider returned an empty translation.");
+          await saveTranslation(segment.id, translatedText);
+          setSegmentTranslationStatus((current) => {
+            const next = { ...current };
+            delete next[segment.id];
+            return next;
+          });
+          return;
+        } catch (error) {
+          lastError = error;
+        }
       }
+      const detail = lastError instanceof Error ? lastError.message : "Cloud translation failed.";
+      setSegmentTranslationStatus((current) => ({ ...current, [segment.id]: { message: `Translation failed: ${detail}`, retryable: true } }));
+      setToast(detail);
     });
     cloudTranslationQueue.current = task.catch(() => undefined);
+  }
+  async function retryCloudTranslation(segment: TranscriptSegment) {
+    const meeting = await db.meetings.get(segment.meetingId);
+    queueCloudTranslation(segment, meeting?.language ?? "sv-SE");
   }
   async function signIn(event: React.FormEvent) {
     event.preventDefault();
@@ -921,6 +947,12 @@ export default function App() {
                       onChange={(e) => void edit(s, e.target.value)}
                     />
                     {s.translatedText && <p className="translated-text" dir="rtl" lang="fa">{s.translatedText}</p>}
+                    {!s.translatedText && segmentTranslationStatus[s.id] && (
+                      <div className="translation-status">
+                        <span>{segmentTranslationStatus[s.id].message}</span>
+                        {segmentTranslationStatus[s.id].retryable && <button type="button" onClick={() => void retryCloudTranslation(s)}>Retry</button>}
+                      </div>
+                    )}
                   </article>
                 ))
               ) : (
