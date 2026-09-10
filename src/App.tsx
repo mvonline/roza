@@ -67,6 +67,8 @@ export default function App() {
   const syncRequested = useRef(false);
   const meetingSaveInFlight = useRef<Promise<void>>(Promise.resolve());
   const cloudTranslationQueue = useRef<Promise<void>>(Promise.resolve());
+  const pausingRecordings = useRef<Promise<void> | null>(null);
+  const pauseOpenRecordingsRef = useRef<(reason: string) => Promise<void>>(async () => undefined);
 
   const traceSpeech = useCallback((event: string) => {
     const entry = `${new Date().toLocaleTimeString()} — ${event}`;
@@ -136,6 +138,38 @@ export default function App() {
     },
     [loadMeetings, loadSegments],
   );
+  const pauseOpenRecordings = useCallback(async (reason: string) => {
+    if (pausingRecordings.current) return pausingRecordings.current;
+    const task = (async () => {
+      stopped.current = true;
+      recognitionStarting.current = false;
+      recognizer.current?.stop();
+      recognizer.current = null;
+      setInterim("");
+      const recordings = await db.meetings.where("status").equals("recording").filter((meeting) => !meeting.deletedAt).toArray();
+      if (!recordings.length) return;
+      const updatedAt = Date.now();
+      await db.transaction("rw", db.meetings, db.syncOperations, async () => {
+        for (const meeting of recordings) {
+          await db.meetings.put({ ...meeting, status: "paused", updatedAt });
+          await queueSync("meeting", meeting.id, "upsert");
+        }
+      });
+      traceSpeech(`Recording paused: ${reason}`);
+      await loadMeetings();
+      await loadSegments(activeRef.current);
+      if (user) void runSync(user);
+    })();
+    pausingRecordings.current = task.catch(() => undefined);
+    try {
+      await task;
+    } finally {
+      pausingRecordings.current = null;
+    }
+  }, [loadMeetings, loadSegments, runSync, traceSpeech, user]);
+  useEffect(() => {
+    pauseOpenRecordingsRef.current = pauseOpenRecordings;
+  }, [pauseOpenRecordings]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -151,6 +185,19 @@ export default function App() {
     const timer = window.setTimeout(() => setToast(null), 4500);
     return () => window.clearTimeout(timer);
   }, [toast]);
+  useEffect(() => {
+    void pauseOpenRecordingsRef.current("Roza was reopened");
+    const pauseForPageExit = () => void pauseOpenRecordingsRef.current("Roza was closed or reloaded");
+    const pauseForBackground = () => {
+      if (document.visibilityState === "hidden") void pauseOpenRecordingsRef.current("Roza moved to the background");
+    };
+    addEventListener("pagehide", pauseForPageExit);
+    document.addEventListener("visibilitychange", pauseForBackground);
+    return () => {
+      removeEventListener("pagehide", pauseForPageExit);
+      document.removeEventListener("visibilitychange", pauseForBackground);
+    };
+  }, []);
   useEffect(() => {
     void loadMeetings();
   }, [loadMeetings]);
