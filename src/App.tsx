@@ -41,6 +41,7 @@ export default function App() {
   const [interim, setInterim] = useState("");
   const [message, setMessage] = useState("");
   const [speechLog, setSpeechLog] = useState<string[]>([]);
+  const [translationLog, setTranslationLog] = useState<string[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
   const [signInCode, setSignInCode] = useState("");
@@ -59,6 +60,7 @@ export default function App() {
   const [cloudTranslating, setCloudTranslating] = useState(false);
   const [cloudAutoTranslate, setCloudAutoTranslate] = useState(() => localStorage.getItem("roza-cloud-auto-translate") !== "false");
   const [segmentTranslationStatus, setSegmentTranslationStatus] = useState<Record<string, SegmentTranslationStatus>>({});
+  const [showDiagnostics, setShowDiagnostics] = useState(() => localStorage.getItem("roza-show-diagnostics") === "true");
   const recognizer = useRef<ReturnType<typeof createRecognizer>>(null);
   const activeRef = useRef<string | null>(null);
   const stopped = useRef(false);
@@ -76,6 +78,11 @@ export default function App() {
     const entry = `${new Date().toLocaleTimeString()} — ${event}`;
     console.info("[Roza speech]", entry);
     setSpeechLog((items) => [entry, ...items].slice(0, 16));
+  }, []);
+  const traceTranslation = useCallback((event: string) => {
+    const entry = `${new Date().toLocaleTimeString()} — ${event}`;
+    console.info("[Roza translation]", entry);
+    setTranslationLog((items) => [entry, ...items].slice(0, 16));
   }, []);
 
   const loadMeetings = useCallback(async () => {
@@ -570,6 +577,7 @@ export default function App() {
     const pending = segments.filter((segment) => !segment.deletedAt && segment.text.trim() && !segment.translatedText);
     if (!pending.length) return setToast("This session is already translated.");
     if (!window.confirm(`Send ${pending.length} transcript parts to ${cloudProvider} for Persian translation? This uses that provider's account and privacy policy.`)) return;
+    traceTranslation(`Manual translation started for ${pending.length} rows with ${cloudProvider}/${cloudModel}`);
     setCloudTranslating(true);
     try {
       const translations: string[] = [];
@@ -586,19 +594,24 @@ export default function App() {
       });
       await loadSegments(active.id);
       void runSync(user);
+      traceTranslation(`Manual translation saved for ${pending.length} rows`);
       setToast("Cloud translation complete");
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "Cloud translation failed.");
+      const detail = error instanceof Error ? error.message : "Cloud translation failed.";
+      traceTranslation(`Manual translation failed — ${detail}`);
+      setToast(detail);
     } finally {
       setCloudTranslating(false);
     }
   }
   function queueCloudTranslation(segment: TranscriptSegment, source: Language) {
+    traceTranslation(`Queued row ${segment.sequence} with ${cloudProvider}/${cloudModel}`);
     setSegmentTranslationStatus((current) => ({ ...current, [segment.id]: { message: "Queued for Persian translation…" } }));
     const task = cloudTranslationQueue.current.then(async () => {
       let lastError: unknown;
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
+          traceTranslation(`Row ${segment.sequence}: attempt ${attempt + 1} started`);
           setSegmentTranslationStatus((current) => ({
             ...current,
             [segment.id]: { message: attempt === 0 ? "Translating to Persian…" : "Retrying translation…" },
@@ -609,6 +622,7 @@ export default function App() {
           ]);
           if (!translatedText) throw new Error("The provider returned an empty translation.");
           await saveTranslation(segment.id, translatedText);
+          traceTranslation(`Row ${segment.sequence}: Persian translation saved`);
           setSegmentTranslationStatus((current) => {
             const next = { ...current };
             delete next[segment.id];
@@ -617,15 +631,18 @@ export default function App() {
           return;
         } catch (error) {
           lastError = error;
+          traceTranslation(`Row ${segment.sequence}: attempt ${attempt + 1} failed — ${error instanceof Error ? error.message : "unknown error"}`);
         }
       }
       const detail = lastError instanceof Error ? lastError.message : "Cloud translation failed.";
+      traceTranslation(`Row ${segment.sequence}: stopped after retry — manual retry available`);
       setSegmentTranslationStatus((current) => ({ ...current, [segment.id]: { message: `Translation failed: ${detail}`, retryable: true } }));
       setToast(detail);
     });
     cloudTranslationQueue.current = task.catch(() => undefined);
   }
   async function retryCloudTranslation(segment: TranscriptSegment) {
+    traceTranslation(`Manual retry requested for row ${segment.sequence}`);
     const meeting = await db.meetings.get(segment.meetingId);
     queueCloudTranslation(segment, meeting?.language ?? "sv-SE");
   }
@@ -746,6 +763,16 @@ export default function App() {
         </nav>
         <details className="settings-panel">
           <summary>Settings</summary>
+          <section className="diagnostics-setting">
+            <label>
+              <input type="checkbox" checked={showDiagnostics} onChange={(event) => {
+                setShowDiagnostics(event.target.checked);
+                localStorage.setItem("roza-show-diagnostics", String(event.target.checked));
+              }} />
+              Show diagnostics
+            </label>
+            <small>Show temporary transcription and translation logs while troubleshooting.</small>
+          </section>
           <section className={`translation-panel ${persianModelSaved ? "translation-ready" : ""}`}>
             <div>
               <p className="eyebrow">Offline translation</p>
@@ -907,11 +934,18 @@ export default function App() {
                 {interim || "Press Start to show live subtitles."}
               </div>
             </div>
-            <details className="speech-debug">
-              <summary>Transcription diagnostic</summary>
-              <p>This log stays only in this browser until the page is refreshed.</p>
-              {speechLog.length === 0 ? <p>No speech activity yet.</p> : <ol>{speechLog.map((entry, index) => <li key={`${entry}-${index}`}>{entry}</li>)}</ol>}
-            </details>
+            {showDiagnostics && <>
+              <details className="speech-debug">
+                <summary>Transcription diagnostic</summary>
+                <p>This log stays only in this browser until the page is refreshed.</p>
+                {speechLog.length === 0 ? <p>No speech activity yet.</p> : <ol>{speechLog.map((entry, index) => <li key={`${entry}-${index}`}>{entry}</li>)}</ol>}
+              </details>
+              <details className="speech-debug">
+                <summary>Translation diagnostic</summary>
+                <p>This log stays only in this browser until the page is refreshed.</p>
+                {translationLog.length === 0 ? <p>No translation activity yet.</p> : <ol>{translationLog.map((entry, index) => <li key={`${entry}-${index}`}>{entry}</li>)}</ol>}
+              </details>
+            </>}
             <div className="controls">
               <div className="controls-primary">
                 {active.status === "recording" ? (
