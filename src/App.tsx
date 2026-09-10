@@ -410,6 +410,44 @@ export default function App() {
     await loadMeetings();
     if (user) void runSync(user);
   }
+  async function exportMeeting() {
+    if (!active) return;
+    const filename = `${active.title.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "roza-session"}.md`;
+    const rows = segments.flatMap((segment) => [
+      `### ${clock(segment.createdAt)}`,
+      "",
+      segment.text,
+      ...(segment.translatedText ? ["", `> ${segment.translatedText}`] : []),
+      "",
+    ]);
+    const content = [
+      `# ${active.title}`,
+      "",
+      `- Date: ${new Date(active.createdAt).toLocaleString()}`,
+      `- Language: ${active.language === "sv-SE" ? "Swedish" : "English"}`,
+      ...(active.labels.length ? [`- Labels: ${active.labels.join(", ")}`] : []),
+      "",
+      "## Transcript",
+      "",
+      ...rows,
+    ].join("\n");
+    const file = new File([content], filename, { type: "text/markdown;charset=utf-8" });
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ title: active.title, files: [file] });
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
+    }
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+    setToast("Transcript exported");
+  }
   async function signIn(event: React.FormEvent) {
     event.preventDefault();
     try {
@@ -632,6 +670,9 @@ export default function App() {
                 )}
                 <button className="quiet" onClick={() => void stop("complete")}>
                   Finish
+                </button>
+                <button className="quiet" onClick={() => void exportMeeting()}>
+                  Export
                 </button>
               </div>
               <button className="danger" onClick={() => void deleteMeeting()}>
