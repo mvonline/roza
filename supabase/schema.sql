@@ -30,6 +30,12 @@ create table public.transcript_segments (
 alter table public.meetings enable row level security;
 alter table public.transcript_segments enable row level security;
 
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on public.meetings to authenticated;
+grant select, insert, update, delete on public.transcript_segments to authenticated;
+revoke all on public.meetings from anon;
+revoke all on public.transcript_segments from anon;
+
 create policy "own meetings" on public.meetings for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "own segments" on public.transcript_segments for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
