@@ -188,14 +188,9 @@ export default function App() {
   useEffect(() => {
     void pauseOpenRecordingsRef.current("Roza was reopened");
     const pauseForPageExit = () => void pauseOpenRecordingsRef.current("Roza was closed or reloaded");
-    const pauseForBackground = () => {
-      if (document.visibilityState === "hidden") void pauseOpenRecordingsRef.current("Roza moved to the background");
-    };
     addEventListener("pagehide", pauseForPageExit);
-    document.addEventListener("visibilitychange", pauseForBackground);
     return () => {
       removeEventListener("pagehide", pauseForPageExit);
-      document.removeEventListener("visibilitychange", pauseForBackground);
     };
   }, []);
   useEffect(() => {
