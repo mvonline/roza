@@ -546,6 +546,8 @@ export default function App() {
     await Promise.all(registrations?.map((registration) => registration.unregister()) ?? []);
     const keys = await caches.keys();
     await Promise.all(keys.map((key) => caches.delete(key)));
+    localStorage.removeItem("roza-persian-model");
+    localStorage.removeItem(translationLockKey);
     window.location.reload();
   }
   const statusLabel: Record<Meeting["status"], string> = {
