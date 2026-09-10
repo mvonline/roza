@@ -3,7 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import { db, normalize, queueSync, rebuildMeetingSearch } from "./db";
 import { createRecognizer, hasSpeechRecognition, permissionSettingsHint, requestMicrophoneAccess, speechErrorMessage } from "./speech";
 import { currentUser, sendSignInLink, supabase, sync, translateWithCloud, verifySignInCode, type CloudProvider } from "./supabase";
-import type { Language, Meeting, TranscriptSegment } from "./types";
+import type { AudioChunk, Language, Meeting, TranscriptSegment } from "./types";
 
 type Theme = "system" | "light" | "dark";
 type SegmentTranslationStatus = { message: string; retryable?: boolean };
@@ -63,6 +63,8 @@ export default function App() {
   const [translationEngine, setTranslationEngine] = useState<TranslationEngine>(() => (localStorage.getItem("roza-translation-engine") as TranslationEngine) || "cloud");
   const [segmentTranslationStatus, setSegmentTranslationStatus] = useState<Record<string, SegmentTranslationStatus>>({});
   const [showDiagnostics, setShowDiagnostics] = useState(() => localStorage.getItem("roza-show-diagnostics") === "true");
+  const [saveAudioLocally, setSaveAudioLocally] = useState(() => localStorage.getItem("roza-save-audio") === "true");
+  const [listeningSegmentId, setListeningSegmentId] = useState<string | null>(null);
   const recognizer = useRef<ReturnType<typeof createRecognizer>>(null);
   const activeRef = useRef<string | null>(null);
   const stopped = useRef(false);
@@ -76,6 +78,11 @@ export default function App() {
   const pausingRecordings = useRef<Promise<void> | null>(null);
   const pauseOpenRecordingsRef = useRef<(reason: string) => Promise<void>>(async () => undefined);
   const diagnosticsEnabled = useRef(showDiagnostics);
+  const audioRecorder = useRef<MediaRecorder | null>(null);
+  const audioStream = useRef<MediaStream | null>(null);
+  const audioRotationTimer = useRef<number | null>(null);
+  const audioPlayer = useRef<HTMLAudioElement | null>(null);
+  const audioUrl = useRef<string | null>(null);
 
   const traceSpeech = useCallback((event: string) => {
     if (!diagnosticsEnabled.current) return;
@@ -159,6 +166,7 @@ export default function App() {
       recognitionStarting.current = false;
       recognizer.current?.stop();
       recognizer.current = null;
+      stopLocalAudio();
       setInterim("");
       const recordings = await db.meetings.where("status").equals("recording").filter((meeting) => !meeting.deletedAt).toArray();
       if (!recordings.length) return;
@@ -194,6 +202,9 @@ export default function App() {
   }, [showDiagnostics]);
   useEffect(() => () => {
     translationWorker.current?.terminate();
+    stopLocalAudio();
+    audioPlayer.current?.pause();
+    if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
     const lock = localStorage.getItem(translationLockKey);
     if (lock && JSON.parse(lock).tabId === tabId.current) localStorage.removeItem(translationLockKey);
   }, []);
@@ -257,6 +268,62 @@ export default function App() {
       translationWorker.current?.postMessage({ type: "translate", id: segment.id, text: segment.text, source: source === "sv-SE" ? "swe_Latn" : "eng_Latn" });
     } else {
       setSegmentTranslationStatus((current) => ({ ...current, [segment.id]: { message: "Download and activate the local Persian model to translate this row." } }));
+    }
+  }
+  function stopLocalAudio() {
+    if (audioRotationTimer.current) window.clearTimeout(audioRotationTimer.current);
+    audioRotationTimer.current = null;
+    audioRecorder.current?.stop();
+    audioRecorder.current = null;
+    audioStream.current?.getTracks().forEach((track) => track.stop());
+    audioStream.current = null;
+  }
+  function startLocalAudio(meetingId: string, stream: MediaStream) {
+    if (!window.MediaRecorder) {
+      stream.getTracks().forEach((track) => track.stop());
+      setToast("Audio recording is unavailable in this browser.");
+      return;
+    }
+    audioStream.current = stream;
+    const mimeType = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"].find((type) => MediaRecorder.isTypeSupported(type)) || "";
+    const recordChunk = () => {
+      if (audioStream.current !== stream || !stream.active) return;
+      const startedAt = Date.now();
+      const parts: BlobPart[] = [];
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      audioRecorder.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) parts.push(event.data);
+      };
+      recorder.onstop = () => {
+        if (parts.length) {
+          const chunk: AudioChunk = { id: crypto.randomUUID(), meetingId, startedAt, endedAt: Date.now(), mimeType: recorder.mimeType || mimeType, blob: new Blob(parts, { type: recorder.mimeType || mimeType }) };
+          void db.audioChunks.add(chunk);
+        }
+        if (audioStream.current === stream && stream.active) recordChunk();
+      };
+      recorder.start();
+      audioRotationTimer.current = window.setTimeout(() => recorder.stop(), 8_000);
+    };
+    recordChunk();
+  }
+  async function playSegmentAudio(segment: TranscriptSegment) {
+    const chunks = await db.audioChunks.where("meetingId").equals(segment.meetingId).toArray();
+    const chunk = chunks.sort((a, b) => a.startedAt - b.startedAt).find((item) => item.startedAt <= segment.createdAt && item.endedAt >= segment.createdAt) || chunks.sort((a, b) => b.startedAt - a.startedAt).find((item) => item.startedAt <= segment.createdAt);
+    if (!chunk) return setToast("No local audio was saved for this transcript row.");
+    audioPlayer.current?.pause();
+    if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
+    const url = URL.createObjectURL(chunk.blob);
+    const player = new Audio(url);
+    audioUrl.current = url;
+    audioPlayer.current = player;
+    setListeningSegmentId(segment.id);
+    player.onended = () => setListeningSegmentId(null);
+    try {
+      await player.play();
+    } catch {
+      setListeningSegmentId(null);
+      setToast("Audio playback could not start.");
     }
   }
   function claimTranslationLock() {
@@ -485,9 +552,10 @@ export default function App() {
           : "Live transcription is unavailable in this browser. Try Safari on iPhone/iPad, or Chrome on Android/desktop.",
       );
     }
+    let microphone: MediaStream;
     try {
       traceSpeech("Requesting microphone permission");
-      await requestMicrophoneAccess();
+      microphone = await requestMicrophoneAccess();
       traceSpeech("Microphone permission granted");
     } catch (error) {
       traceSpeech(`Microphone permission failed: ${error instanceof Error ? error.name : "unknown error"}`);
@@ -495,6 +563,8 @@ export default function App() {
     }
     stopped.current = false;
     await saveMeeting({ status: "recording", startedAt: active.startedAt || Date.now() });
+    if (saveAudioLocally) startLocalAudio(active.id, microphone);
+    else microphone.getTracks().forEach((track) => track.stop());
     traceSpeech("Session marked as recording");
     beginRecognition(active.language);
   }
@@ -503,6 +573,7 @@ export default function App() {
     recognitionStarting.current = false;
     recognizer.current?.stop();
     recognizer.current = null;
+    stopLocalAudio();
     setInterim("");
     await saveMeeting({
       status,
@@ -549,6 +620,7 @@ export default function App() {
       "rw",
       db.meetings,
       db.segments,
+      db.audioChunks,
       db.syncOperations,
       async () => {
         await db.meetings.put(meeting);
@@ -556,12 +628,14 @@ export default function App() {
           await db.segments.put({ ...segment, deletedAt: now, updatedAt: now });
           if (user) await queueSync("segment", segment.id, "delete");
         }
+        await db.audioChunks.where("meetingId").equals(active.id).delete();
         if (user) await queueSync("meeting", meeting.id, "delete");
       },
     );
     stopped.current = true;
     recognizer.current?.stop();
     recognizer.current = null;
+    stopLocalAudio();
     setActiveId(null);
     await loadMeetings();
     if (user) void runSync(user);
@@ -810,6 +884,16 @@ export default function App() {
             </label>
             <small>{translationEngine === "cloud" ? "Uses your selected cloud provider. The offline model is inactive." : "Runs only on this device. Cloud AI is inactive."}</small>
           </section>
+          <section className="audio-setting">
+            <label>
+              <input type="checkbox" checked={saveAudioLocally} onChange={(event) => {
+                setSaveAudioLocally(event.target.checked);
+                localStorage.setItem("roza-save-audio", String(event.target.checked));
+              }} />
+              Save recording audio on this device
+            </label>
+            <small>Audio stays only in this browser. It starts with the next Start and uses device storage.</small>
+          </section>
           {translationEngine === "local" && <section className={`translation-panel ${persianModelSaved ? "translation-ready" : ""}`}>
             <div>
               <p className="eyebrow">Offline translation</p>
@@ -1020,6 +1104,9 @@ export default function App() {
                       value={s.text}
                       onChange={(e) => void edit(s, e.target.value)}
                     />
+                    <button className="listen-row" type="button" onClick={() => void playSegmentAudio(s)}>
+                      {listeningSegmentId === s.id ? "Listening…" : "▶ Listen"}
+                    </button>
                     {s.translatedText && <p className="translated-text" dir="rtl" lang="fa">{s.translatedText}</p>}
                     {!s.translatedText && segmentTranslationStatus[s.id] && (
                       <div className="translation-status">

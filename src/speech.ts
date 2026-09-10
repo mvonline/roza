@@ -30,8 +30,7 @@ export function permissionSettingsHint() {
 
 export async function requestMicrophoneAccess() {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error("microphone-unavailable");
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  stream.getTracks().forEach((track) => track.stop());
+  return navigator.mediaDevices.getUserMedia({ audio: true });
 }
 
 export function speechErrorMessage(error: string) {
