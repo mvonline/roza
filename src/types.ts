@@ -30,15 +30,6 @@ export type TranscriptSegment = {
   deletedAt?: number;
 };
 
-export type AudioChunk = {
-  id: string;
-  meetingId: string;
-  startedAt: number;
-  endedAt: number;
-  mimeType: string;
-  blob: Blob;
-};
-
 export type SearchEntry = {
   id: string;
   meetingId: string;

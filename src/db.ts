@@ -1,5 +1,5 @@
 import Dexie, { type Table } from "dexie";
-import type { AudioChunk, Meeting, SearchEntry, SyncOperation, TranscriptSegment } from "./types";
+import type { Meeting, SearchEntry, SyncOperation, TranscriptSegment } from "./types";
 
 class RozaDatabase extends Dexie {
   meetings!: Table<Meeting, string>;
@@ -7,7 +7,6 @@ class RozaDatabase extends Dexie {
   searchEntries!: Table<SearchEntry, string>;
   syncOperations!: Table<SyncOperation, string>;
   settings!: Table<{ key: string; value: string }, string>;
-  audioChunks!: Table<AudioChunk, string>;
 
   constructor() {
     super("roza");
@@ -24,14 +23,6 @@ class RozaDatabase extends Dexie {
       searchEntries: "id, meetingId, segmentId, source, normalizedText",
       syncOperations: "id, createdAt",
       settings: "key"
-    });
-    this.version(3).stores({
-      meetings: "id, createdAt, updatedAt, userId, status, *labels",
-      segments: "id, meetingId, [meetingId+sequence], updatedAt",
-      searchEntries: "id, meetingId, segmentId, source, normalizedText",
-      syncOperations: "id, createdAt",
-      settings: "key",
-      audioChunks: "id, meetingId, [meetingId+startedAt]"
     });
   }
 }
