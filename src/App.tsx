@@ -653,11 +653,11 @@ export default function App() {
               <select value={cloudModel} onChange={(event) => { setCloudModel(event.target.value); localStorage.setItem("roza-cloud-model", event.target.value); }}>
                 {cloudModels[cloudProvider].map((model) => <option key={model.value} value={model.value}>{model.label}</option>)}
               </select>
-              <button type="button" onClick={() => void translateSessionWithCloud()} disabled={cloudTranslating || !user || !active}>
-                {cloudTranslating ? "Translating…" : "Translate with AI"}
+              <button type="button" onClick={() => void translateSessionWithCloud()} disabled={cloudTranslating}>
+                {cloudTranslating ? "Translating…" : !user ? "Sign in to use AI" : !active ? "Open a session to translate" : "Translate with AI"}
               </button>
             </div>
-            <small>Only when you press Translate with AI is this session sent to the selected provider.</small>
+            <small>{!user ? "Sign in first so Roza can securely call your selected provider." : !active ? "Select or create a session first." : "Only when you press Translate with AI is this session sent to the selected provider."}</small>
           </section>
         </details>
         <div className="account-panel">
