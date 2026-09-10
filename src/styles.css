@@ -56,6 +56,7 @@ button, select {
 .caption { font-size: clamp(1.5rem, 5vw, 2.75rem); line-height: 1.2; }
 .quiet { background: transparent; border: 1px solid #cfc7e1; color: inherit; }
 .danger { background: #b42318; }
+.toast { position: fixed; right: 1rem; bottom: 1rem; max-width: min(24rem, calc(100vw - 2rem)); border-radius: .75rem; background: #262033; color: white; padding: .8rem 1rem; box-shadow: 0 12px 35px #0004; z-index: 10; }
 .message { color: #b34040; }
 .transcript { margin-top: 1rem; }
 .transcript { counter-reset: row; }

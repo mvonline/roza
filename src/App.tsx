@@ -37,6 +37,7 @@ export default function App() {
   const [syncState, setSyncState] = useState(
     supabase ? "Sign in to sync" : "Saved on this device",
   );
+  const [toast, setToast] = useState<string | null>(null);
   const recognizer = useRef<ReturnType<typeof createRecognizer>>(null);
   const activeRef = useRef<string | null>(null);
   const stopped = useRef(false);
@@ -79,12 +80,15 @@ export default function App() {
     async (account: User) => {
       try {
         setSyncState("Syncing");
+        setToast("Syncing your sessions…");
         await sync(account);
         setSyncState("Synced");
+        setToast("Sync complete");
         await loadMeetings();
         await loadSegments(activeRef.current);
       } catch {
         setSyncState("Needs attention");
+        setToast("Sync failed. Your changes remain saved on this device.");
       }
     },
     [loadMeetings, loadSegments],
@@ -94,6 +98,11 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("roza-theme", theme);
   }, [theme]);
+  useEffect(() => {
+    if (!toast || toast.startsWith("Syncing")) return;
+    const timer = window.setTimeout(() => setToast(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
   useEffect(() => {
     void loadMeetings();
   }, [loadMeetings]);
@@ -416,7 +425,7 @@ export default function App() {
               <option value="dark">Dark</option>
             </select>
           </label>
-          {user && <button onClick={() => void runSync(user)}>Sync now</button>}
+          {user && <button disabled={syncState === "Syncing"} onClick={() => void runSync(user)}>{syncState === "Syncing" ? "Syncing…" : "Sync now"}</button>}
         </header>
         {active ? (
           <section className="meeting-view">
@@ -501,6 +510,7 @@ export default function App() {
           </section>
         )}
       </section>
+      {toast && <div className="toast" role="status">{toast}</div>}
     </main>
   );
 }
