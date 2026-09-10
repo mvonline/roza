@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { db, normalize, queueSync, rebuildMeetingSearch } from "./db";
-import { createRecognizer, hasSpeechRecognition, permissionSettingsHint, requestMicrophoneAccess, speechErrorMessage } from "./speech";
+import { createRecognizer, hasSpeechRecognition, speechErrorMessage } from "./speech";
 import { currentUser, sendSignInLink, supabase, sync, translateWithCloud, verifySignInCode, type CloudProvider } from "./supabase";
 import type { Language, Meeting, TranscriptSegment } from "./types";
 
@@ -339,6 +339,34 @@ export default function App() {
     }
     if (user) void runSync(user);
   }
+  function beginRecognition(language: Language) {
+    const next = createRecognizer(
+      language,
+      setInterim,
+      (text) => void saveFinal(text),
+      () => {
+        if (stopped.current) return;
+        window.setTimeout(() => {
+          if (!stopped.current) beginRecognition(language);
+        }, 400);
+      },
+      (error) => {
+        setMessage(speechErrorMessage(error));
+        if (["not-allowed", "service-not-allowed", "audio-capture"].includes(error)) {
+          stopped.current = true;
+          void saveMeeting({ status: "paused" });
+        }
+      },
+    );
+    if (!next) return;
+    recognizer.current = next;
+    try {
+      next.start();
+      setMessage("");
+    } catch {
+      setMessage("Roza is already listening.");
+    }
+  }
   async function start() {
     if (!active) return;
     if (!hasSpeechRecognition())
@@ -347,36 +375,12 @@ export default function App() {
           ? "Chrome on iPhone/iPad does not provide reliable live transcription. Open Roza in Safari and allow the microphone."
           : "Live transcription is unavailable in this browser. Try Safari on iPhone/iPad, or Chrome on Android/desktop.",
       );
-    try {
-      await requestMicrophoneAccess();
-    } catch {
-      return setMessage(permissionSettingsHint());
-    }
     stopped.current = false;
+    beginRecognition(active.language);
     await saveMeeting({
       status: "recording",
       startedAt: active.startedAt || Date.now(),
     });
-    recognizer.current = createRecognizer(
-      active.language,
-      setInterim,
-      (text) => void saveFinal(text),
-      () => {
-        if (!stopped.current)
-          setTimeout(() => {
-            void db.meetings.get(activeRef.current || "").then((m) => {
-              if (m?.status === "recording") void start();
-            });
-          }, 400);
-      },
-      (error) => setMessage(speechErrorMessage(error)),
-    );
-    try {
-      recognizer.current?.start();
-      setMessage("");
-    } catch {
-      setMessage("Roza is already listening.");
-    }
   }
   async function stop(status: "paused" | "complete") {
     stopped.current = true;
