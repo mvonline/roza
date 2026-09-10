@@ -12,7 +12,7 @@ const cloudModels: Record<CloudProvider, { value: string; label: string }[]> = {
   openai: [{ value: "gpt-4.1-mini", label: "GPT-4.1 mini" }, { value: "gpt-4.1", label: "GPT-4.1" }],
   anthropic: [{ value: "claude-sonnet-4-20250514", label: "Claude Sonnet" }, { value: "claude-haiku-4-5-20251001", label: "Claude Haiku" }],
   gemini: [{ value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" }, { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" }],
-  openrouter: [{ value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash" }, { value: "anthropic/claude-sonnet-4", label: "Claude Sonnet" }, { value: "openai/gpt-4.1", label: "GPT-4.1" }]
+  openrouter: [{ value: "openrouter/free", label: "Free model router" }, { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash" }, { value: "anthropic/claude-sonnet-4", label: "Claude Sonnet" }, { value: "openai/gpt-4.1", label: "GPT-4.1" }]
 };
 const dateTitle = () =>
   new Intl.DateTimeFormat(undefined, {
@@ -50,7 +50,7 @@ export default function App() {
   const [translationProgress, setTranslationProgress] = useState(0);
   const [persianModelSaved, setPersianModelSaved] = useState(() => localStorage.getItem("roza-persian-model") === "saved");
   const [cloudProvider, setCloudProvider] = useState<CloudProvider>(() => (localStorage.getItem("roza-cloud-provider") as CloudProvider) || "openrouter");
-  const [cloudModel, setCloudModel] = useState(() => localStorage.getItem("roza-cloud-model") || "google/gemini-2.5-flash");
+  const [cloudModel, setCloudModel] = useState(() => localStorage.getItem("roza-cloud-model") || "openrouter/free");
   const [cloudTranslating, setCloudTranslating] = useState(false);
   const recognizer = useRef<ReturnType<typeof createRecognizer>>(null);
   const activeRef = useRef<string | null>(null);

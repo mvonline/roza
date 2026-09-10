@@ -14,7 +14,7 @@ const allowedModels: Record<Provider, string[]> = {
   openai: ["gpt-4.1-mini", "gpt-4.1"],
   anthropic: ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"],
   gemini: ["gemini-2.5-flash", "gemini-2.5-pro"],
-  openrouter: ["google/gemini-2.5-flash", "anthropic/claude-sonnet-4", "openai/gpt-4.1"]
+  openrouter: ["openrouter/free", "google/gemini-2.5-flash", "anthropic/claude-sonnet-4", "openai/gpt-4.1"]
 };
 
 function response(body: unknown, status = 200) {
