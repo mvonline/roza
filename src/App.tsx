@@ -53,6 +53,7 @@ export default function App() {
   async function saveMeeting(changes: Partial<Meeting>) {
     if (!active) return;
     const next = { ...active, ...changes, updatedAt: Date.now() };
+    setMeetings((current) => current.map((meeting) => meeting.id === next.id ? next : meeting).sort((a, b) => b.updatedAt - a.updatedAt));
     await db.transaction("rw", db.meetings, db.searchEntries, db.syncOperations, async () => { await db.meetings.put(next); await rebuildMeetingSearch(next); if (user) await queueSync("meeting", next.id, "upsert"); });
     await loadMeetings(); if (user) void runSync(user);
   }
@@ -73,6 +74,26 @@ export default function App() {
   }
   async function stop(status: "paused" | "complete") { stopped.current = true; recognizer.current?.stop(); recognizer.current = null; setInterim(""); await saveMeeting({ status, endedAt: status === "complete" ? Date.now() : undefined }); }
   async function edit(segment: TranscriptSegment, text: string) { const next = { ...segment, text, editedAt: Date.now(), updatedAt: Date.now() }; await db.transaction("rw", db.segments, db.searchEntries, db.syncOperations, async () => { await db.segments.put(next); await db.searchEntries.put({ id: `segment:${segment.id}`, meetingId: segment.meetingId, segmentId: segment.id, source: "transcript", normalizedText: normalize(text), preview: text }); if (user) await queueSync("segment", segment.id, "upsert"); }); await loadSegments(segment.meetingId); if (user) void runSync(user); }
+  async function deleteMeeting() {
+    if (!active || !window.confirm(`Delete “${active.title}”?`)) return;
+    const now = Date.now();
+    const meeting = { ...active, deletedAt: now, updatedAt: now };
+    const meetingSegments = await db.segments.where("meetingId").equals(active.id).toArray();
+    await db.transaction("rw", db.meetings, db.segments, db.syncOperations, async () => {
+      await db.meetings.put(meeting);
+      for (const segment of meetingSegments) {
+        await db.segments.put({ ...segment, deletedAt: now, updatedAt: now });
+        if (user) await queueSync("segment", segment.id, "delete");
+      }
+      if (user) await queueSync("meeting", meeting.id, "delete");
+    });
+    stopped.current = true;
+    recognizer.current?.stop();
+    recognizer.current = null;
+    setActiveId(null);
+    await loadMeetings();
+    if (user) void runSync(user);
+  }
   async function signIn(event: React.FormEvent) { event.preventDefault(); try { await sendSignInLink(email); setMessage("Check your email for the sign-in link."); } catch (error) { setMessage(error instanceof Error ? error.message : "Could not sign in."); } }
 
   const signOut = () => supabase?.auth.signOut();

@@ -53,7 +53,9 @@ button, select {
 .quiet { background: transparent; border: 1px solid #cfc7e1; color: inherit; }
 .message { color: #b34040; }
 .transcript { margin-top: 1rem; }
-.transcript article { display: grid; grid-template-columns: 4rem 1fr; gap: .75rem; border-top: 1px solid #dcd5ec; padding: .75rem 0; }
+.transcript { counter-reset: row; }
+.transcript article { display: grid; grid-template-columns: 2rem 4rem 1fr; gap: .75rem; border-top: 1px solid #dcd5ec; padding: .75rem 0; counter-increment: row; }
+.transcript article::before { content: counter(row); color: #6e6680; font-size: .8rem; font-variant-numeric: tabular-nums; }
 .transcript time { font-size: .8rem; color: #6e6680; }
 textarea { min-height: 3rem; width: 100%; resize: vertical; border: 0; background: transparent; color: inherit; font: inherit; line-height: 1.5; }
 

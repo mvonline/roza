@@ -20,6 +20,7 @@ create table public.transcript_segments (
   sequence integer not null,
   text text not null,
   recognized_text text not null,
+  translated_text text,
   created_at bigint not null,
   updated_at bigint not null,
   edited_at bigint,

@@ -23,6 +23,7 @@ export type TranscriptSegment = {
   sequence: number;
   text: string;
   recognizedText: string;
+  translatedText?: string;
   createdAt: number;
   updatedAt: number;
   editedAt?: number;
