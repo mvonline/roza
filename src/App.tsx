@@ -60,7 +60,6 @@ export default function App() {
   const [cloudProvider, setCloudProvider] = useState<CloudProvider>(() => (localStorage.getItem("roza-cloud-provider") as CloudProvider) || "openrouter");
   const [cloudModel, setCloudModel] = useState(() => localStorage.getItem("roza-cloud-model") || "openrouter/free");
   const [cloudTranslating, setCloudTranslating] = useState(false);
-  const [cloudAutoTranslate, setCloudAutoTranslate] = useState(() => localStorage.getItem("roza-cloud-auto-translate") !== "false");
   const [translationEngine, setTranslationEngine] = useState<TranslationEngine>(() => (localStorage.getItem("roza-translation-engine") as TranslationEngine) || "cloud");
   const [segmentTranslationStatus, setSegmentTranslationStatus] = useState<Record<string, SegmentTranslationStatus>>({});
   const [showDiagnostics, setShowDiagnostics] = useState(() => localStorage.getItem("roza-show-diagnostics") === "true");
@@ -244,11 +243,21 @@ export default function App() {
     const segment = await db.segments.get(id);
     if (!segment) return;
     await db.segments.put({ ...segment, translatedText, updatedAt: Date.now() });
+    setSegmentTranslationStatus((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
     if (user) { await queueSync("segment", id, "upsert"); void runSync(user); }
     await loadSegments(segment.meetingId);
   }
   function requestTranslation(segment: TranscriptSegment, source: Language) {
-    if (translationState === "ready") translationWorker.current?.postMessage({ type: "translate", id: segment.id, text: segment.text, source: source === "sv-SE" ? "swe_Latn" : "eng_Latn" });
+    if (translationState === "ready") {
+      setSegmentTranslationStatus((current) => ({ ...current, [segment.id]: { message: "Translating offline…" } }));
+      translationWorker.current?.postMessage({ type: "translate", id: segment.id, text: segment.text, source: source === "sv-SE" ? "swe_Latn" : "eng_Latn" });
+    } else {
+      setSegmentTranslationStatus((current) => ({ ...current, [segment.id]: { message: "Download and activate the local Persian model to translate this row." } }));
+    }
   }
   function claimTranslationLock() {
     const raw = localStorage.getItem(translationLockKey);
@@ -413,7 +422,11 @@ export default function App() {
     await loadSegments(meetingId);
     await loadMeetings();
     if (saved) {
-      if (translationEngine === "cloud" && cloudAutoTranslate && user) scheduleCloudTranslation(saved, source);
+      if (translationEngine === "cloud" && user) scheduleCloudTranslation(saved, source);
+      if (translationEngine === "cloud" && !user) {
+        const savedId = saved.id;
+        setSegmentTranslationStatus((current) => ({ ...current, [savedId]: { message: "Sign in to translate this row with Cloud AI." } }));
+      }
       if (translationEngine === "local") requestTranslation(saved, source);
     }
     if (user) void runSync(user);
@@ -829,18 +842,11 @@ export default function App() {
               <select value={cloudModel} onChange={(event) => { setCloudModel(event.target.value); localStorage.setItem("roza-cloud-model", event.target.value); }}>
                 {cloudModels[cloudProvider].map((model) => <option key={model.value} value={model.value}>{model.label}</option>)}
               </select>
-              <label className="auto-translate-toggle">
-                <input type="checkbox" checked={cloudAutoTranslate} disabled={!user} onChange={(event) => {
-                  setCloudAutoTranslate(event.target.checked);
-                  localStorage.setItem("roza-cloud-auto-translate", String(event.target.checked));
-                }} />
-                Translate each new chunk
-              </label>
               <button type="button" onClick={() => void translateSessionWithCloud()} disabled={cloudTranslating}>
                 {cloudTranslating ? "Translating…" : !user ? "Sign in to use AI" : !active ? "Open a session to translate" : "Translate with AI"}
               </button>
             </div>
-            <small>{!user ? "Sign in first so Roza can securely call your selected provider." : cloudAutoTranslate ? "Each finalized new chunk is sent to the selected provider." : !active ? "Select or create a session first." : "Only when you press Translate with AI is this session sent to the selected provider."}</small>
+            <small>{!user ? "Sign in first so new transcript rows can be translated automatically." : !active ? "Select or create a session first." : "Each finalized transcript row is translated after it appears below."}</small>
           </section>}
           <section className="diagnostics-setting">
             <label>
