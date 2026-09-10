@@ -10,6 +10,7 @@ type SegmentTranslationStatus = { message: string; retryable?: boolean };
 type TranslationEngine = "cloud" | "local";
 const pageSize = 50;
 const translationLockKey = "roza-persian-translation-lock";
+const localModelVersion = "nllb-q4-v1";
 const cloudModels: Record<CloudProvider, { value: string; label: string }[]> = {
   openai: [{ value: "gpt-4.1-mini", label: "GPT-4.1 mini" }, { value: "gpt-4.1", label: "GPT-4.1" }],
   anthropic: [{ value: "claude-sonnet-4-20250514", label: "Claude Sonnet" }, { value: "claude-haiku-4-5-20251001", label: "Claude Haiku" }],
@@ -55,7 +56,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [translationState, setTranslationState] = useState<"off" | "loading" | "ready">("off");
   const [translationProgress, setTranslationProgress] = useState(0);
-  const [persianModelSaved, setPersianModelSaved] = useState(() => localStorage.getItem("roza-persian-model") === "saved");
+  const [persianModelSaved, setPersianModelSaved] = useState(() => localStorage.getItem("roza-persian-model") === localModelVersion);
   const [cloudProvider, setCloudProvider] = useState<CloudProvider>(() => (localStorage.getItem("roza-cloud-provider") as CloudProvider) || "openrouter");
   const [cloudModel, setCloudModel] = useState(() => localStorage.getItem("roza-cloud-model") || "openrouter/free");
   const [cloudTranslating, setCloudTranslating] = useState(false);
@@ -292,7 +293,7 @@ export default function App() {
       }
       if (event.data.type === "ready") {
         setTranslationState("ready");
-        localStorage.setItem("roza-persian-model", "saved");
+        localStorage.setItem("roza-persian-model", localModelVersion);
         setPersianModelSaved(true);
         setToast("Persian translation is ready");
         if (activeRef.current) {

@@ -10,7 +10,7 @@ async function loadTranslator() {
     translator = import("@huggingface/transformers")
       .then(({ pipeline }) => pipeline("translation", "Xenova/nllb-200-distilled-600M", {
         device: "wasm",
-        dtype: "q8",
+        dtype: "q4",
         progress_callback: (info: { status?: string; file?: string; progress?: number; loaded?: number; total?: number }) => {
           if (info.status !== "progress" && info.status !== "initiate") return;
           const key = info.file ?? "default";
