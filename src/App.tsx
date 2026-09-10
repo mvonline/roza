@@ -26,6 +26,8 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [search, setSearch] = useState("");
+  const [labelFilter, setLabelFilter] = useState<string | null>(null);
+  const [labels, setLabels] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [language, setLanguage] = useState<Language>("sv-SE");
   const [interim, setInterim] = useState("");
@@ -41,6 +43,10 @@ export default function App() {
 
   const loadMeetings = useCallback(async () => {
     const term = normalize(search);
+    if (!term && labelFilter) {
+      const filtered = await db.meetings.where("labels").equals(labelFilter).filter((meeting) => !meeting.deletedAt).toArray();
+      return setMeetings(filtered.sort((a, b) => b.createdAt - a.createdAt).slice(0, page * pageSize));
+    }
     if (!term)
       return setMeetings(
         await db.meetings
@@ -55,9 +61,9 @@ export default function App() {
       .toArray();
     const found = (
       await db.meetings.bulkGet([...new Set(hits.map((hit) => hit.meetingId))])
-    ).filter((m): m is Meeting => Boolean(m && !m.deletedAt));
+    ).filter((m): m is Meeting => Boolean(m && !m.deletedAt && (!labelFilter || m.labels.includes(labelFilter))));
     setMeetings(found.sort((a, b) => b.createdAt - a.createdAt));
-  }, [page, search]);
+  }, [labelFilter, page, search]);
   const loadSegments = useCallback(async (id: string | null) => {
     if (!id) return setSegments([]);
     const rows = await db.segments
@@ -91,6 +97,9 @@ export default function App() {
   useEffect(() => {
     void loadMeetings();
   }, [loadMeetings]);
+  useEffect(() => {
+    void db.meetings.filter((meeting) => !meeting.deletedAt).toArray().then((items) => setLabels([...new Set(items.flatMap((meeting) => meeting.labels))].sort((a, b) => a.localeCompare(b))));
+  }, [meetings]);
   useEffect(() => {
     activeRef.current = activeId;
     void loadSegments(activeId);
@@ -343,6 +352,13 @@ export default function App() {
           }}
           placeholder="Search lessons"
         />{" "}
+        <section className="label-section">
+          <p className="eyebrow">Labels</p>
+          <div className="label-list">
+            <button className={!labelFilter ? "label-active" : ""} onClick={() => { setLabelFilter(null); setPage(1); }}>All sessions</button>
+            {labels.map((label) => <button key={label} className={labelFilter === label ? "label-active" : ""} onClick={() => { setLabelFilter(label); setPage(1); }}>{label}</button>)}
+          </div>
+        </section>
         <nav className="meeting-list">
           {meetings.map((m) => (
             <button

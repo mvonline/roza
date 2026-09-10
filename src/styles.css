@@ -39,6 +39,10 @@ button, select {
 .brand-row, .topbar, .controls, .meeting-options { display: flex; align-items: center; gap: .75rem; justify-content: space-between; }
 .search, .meeting-options input, .account-panel input, .title-input { width: 100%; border: 1px solid #cfc7e1; border-radius: .6rem; background: transparent; color: inherit; padding: .65rem; }
 .meeting-list { display: grid; gap: .3rem; overflow: auto; }
+.label-section { display: grid; gap: .4rem; }
+.label-list { display: flex; flex-wrap: wrap; gap: .35rem; }
+.label-list button { background: transparent; border: 1px solid #cfc7e1; color: inherit; border-radius: 999px; padding: .3rem .55rem; font-size: .78rem; }
+.label-list .label-active { background: #7b4dff; border-color: #7b4dff; color: white; }
 .meeting-item { display: grid; text-align: left; background: transparent; color: inherit; padding: .65rem; }
 .meeting-item.selected { background: #7b4dff; color: white; }
 .meeting-item span, .meeting-item small { font-size: .75rem; opacity: .8; }
