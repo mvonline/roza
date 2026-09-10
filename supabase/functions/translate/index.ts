@@ -21,12 +21,17 @@ function response(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: corsHeaders });
 }
 
-function extractJsonArray(text: string) {
-  const match = text.match(/\[[\s\S]*\]/);
-  if (!match) throw new Error("Provider did not return a JSON array.");
-  const translations = JSON.parse(match[0]);
-  if (!Array.isArray(translations) || translations.some((item) => typeof item !== "string")) throw new Error("Provider returned invalid translations.");
-  return translations;
+function extractTranslations(text: string, expectedLength: number) {
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  const match = cleaned.match(/\[[\s\S]*\]/);
+  if (match) {
+    try {
+      const translations = JSON.parse(match[0]);
+      if (Array.isArray(translations) && translations.every((item) => typeof item === "string")) return translations;
+    } catch {}
+  }
+  if (expectedLength === 1 && cleaned) return [cleaned.replace(/^(?:translation|persian translation|ترجمه)\s*[:：-]\s*/i, "").trim()];
+  throw new Error("Provider did not return one translation for each transcript row.");
 }
 
 async function requestProvider(provider: Provider, model: string, prompt: string) {
@@ -74,7 +79,7 @@ Deno.serve(async (request) => {
     const texts = body.texts.map((text) => text.trim());
     if (texts.join("").length > 24000) return response({ error: "Translation batch is too long." }, 400);
     const prompt = `Translate each ${body.sourceLanguage} transcript part below into natural Persian. Preserve names, textile terminology, and the array order. Return only a JSON array of Persian strings, with exactly ${texts.length} entries.\n\n${JSON.stringify(texts)}`;
-    const translations = extractJsonArray(await requestProvider(body.provider, body.model, prompt));
+    const translations = extractTranslations(await requestProvider(body.provider, body.model, prompt), texts.length);
     if (translations.length !== texts.length) throw new Error("Provider returned the wrong number of translations.");
     return response({ translations });
   } catch (error) {

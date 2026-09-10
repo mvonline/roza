@@ -394,7 +394,7 @@ export default function App() {
     await loadSegments(meetingId);
     await loadMeetings();
     if (saved) {
-      if (cloudAutoTranslate && user) requestAnimationFrame(() => queueCloudTranslation(saved!, source));
+      if (cloudAutoTranslate && user) scheduleCloudTranslation(saved, source);
       else requestTranslation(saved, source);
     }
     if (user) void runSync(user);
@@ -603,6 +603,11 @@ export default function App() {
     } finally {
       setCloudTranslating(false);
     }
+  }
+  function scheduleCloudTranslation(segment: TranscriptSegment, source: Language) {
+    requestAnimationFrame(() => {
+      window.setTimeout(() => queueCloudTranslation(segment, source), 0);
+    });
   }
   function queueCloudTranslation(segment: TranscriptSegment, source: Language) {
     traceTranslation(`Queued row ${segment.sequence} with ${cloudProvider}/${cloudModel}`);
