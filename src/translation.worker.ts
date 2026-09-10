@@ -7,8 +7,11 @@ async function loadTranslator() {
       .then(({ pipeline }) => pipeline("translation", "Xenova/nllb-200-distilled-600M", {
         device: "wasm",
         dtype: "q8",
-        progress_callback: (info: { status?: string; progress?: number }) => {
-          if (info.status === "progress_total") postMessage({ type: "progress", progress: info.progress ?? 0 });
+        progress_callback: (info: { status?: string; progress?: number; loaded?: number; total?: number }) => {
+          if (info.status === "progress") {
+            const progress = info.progress ?? (info.total ? (info.loaded ?? 0) / info.total * 100 : 0);
+            postMessage({ type: "progress", progress });
+          }
         }
       }))
       .catch((error) => {
